@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEAR ASCII Landscape</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a0a;
+            font-family: 'Courier New', monospace;
+            color: #00ff00;
+            overflow: hidden;
+        }
+        
+        #canvas {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        
+        .creature {
+            position: absolute;
+            white-space: pre;
+            font-size: 14px;
+            line-height: 14px;
+            text-shadow: 0 0 10px currentColor;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .creature:hover {
+            transform: scale(1.2);
+            filter: brightness(1.5);
+        }
+        
+        #info-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #00ff00;
+            padding: 20px;
+            max-width: 300px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+        
+        #info-panel h2 {
+            margin-bottom: 10px;
+            color: #00ff00;
+            font-size: 16px;
+        }
+        
+        #info-panel .stat {
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        #info-panel .label {
+            color: #00aa00;
+        }
+        
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #00ff00;
+            padding: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+        
+        button {
+            background: #003300;
+            color: #00ff00;
+            border: 2px solid #00ff00;
+            padding: 10px 20px;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        button:hover {
+            background: #00ff00;
+            color: #000;
+            box-shadow: 0 0 20px #00ff00;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .mood-indicator {
+            font-size: 24px;
+            text-align: center;
+            margin: 10px 0;
+        }
+        
+        .very_bullish { color: #00ff00; }
+        .bullish { color: #88ff88; }
+        .neutral { color: #ffff00; }
+        .bearish { color: #ff8888; }
+        .very_bearish { color: #ff0000; }
+        .genesis { color: #888888; }
+        
+        #connection-status {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #00ff00;
+            font-size: 12px;
+        }
+        
+        .connected { color: #00ff00; }
+        .disconnected { color: #ff0000; }
+    </style>
+</head>
+<body>
+    <div id="connection-status">
+        <span class="disconnected">⚠ Demo Mode (Not connected to NEAR)</span>
+    </div>
+    
+    <div id="canvas"></div>
+    
+    <div id="info-panel">
+        <h2>🌍 ASCII Landscape</h2>
+        <div class="mood-indicator" id="mood">GENESIS</div>
+        <div class="stat">
+            <span class="label">Generation:</span>
+            <span id="generation">0</span>
+        </div>
+        <div class="stat">
+            <span class="label">Total Buys:</span>
+            <span id="buys">0 Ⓝ</span>
+        </div>
+        <div class="stat">
+            <span class="label">Total Sells:</span>
+            <span id="sells">0 Ⓝ</span>
+        </div>
+        <hr style="margin: 10px 0; border-color: #00ff00;">
+        <div class="stat">
+            <span class="label">🐱 Cats:</span>
+            <span id="cats">2</span>
+        </div>
+        <div class="stat">
+            <span class="label">🐛 Bugs:</span>
+            <span id="bugs">5</span>
+        </div>
+        <div class="stat">
+            <span class="label">🐟 Fish:</span>
+            <span id="fish">3</span>
+        </div>
+        <div class="stat">
+            <span class="label">🐦 Birds:</span>
+            <span id="birds">2</span>
+        </div>
+        <div class="stat">
+            <span class="label">🐰 Bunnies:</span>
+            <span id="bunnies">2</span>
+        </div>
+        <div class="stat">
+            <span class="label">🐑 Sheep:</span>
+            <span id="sheep">2</span>
+        </div>
+        <hr style="margin: 10px 0; border-color: #00ff00;">
+        <div class="stat">
+            <span class="label">Aggression:</span>
+            <span id="aggression">5/10</span>
+        </div>
+        <div class="stat">
+            <span class="label">Speed:</span>
+            <span id="speed">1x</span>
+        </div>
+    </div>
+    
+    <div id="controls">
+        <button id="buyBtn" onclick="simulateBuy()">📈 BUY (Demo)</button>
+        <button id="sellBtn" onclick="simulateSell()">📉 SELL (Demo)</button>
+        <button onclick="resetLandscape()">🔄 RESET</button>
+    </div>
+    
+    <script>
+        // Demo state (simulates contract state)
+        let demoState = {
+            dna_hash: new Array(32).fill(0),
+            generation: 0,
+            total_buys: 0,
+            total_sells: 0,
+        };
+        
+        const canvas = document.getElementById('canvas');
+        let mouseX = window.innerWidth / 2;
+        let mouseY = window.innerHeight / 2;
+        
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        const creatureTemplates = {
+            cat: {
+                frames: ['  /\\_/\\\n ( o.o )\n  > ^ <', '  /\\_/\\\n ( -.- )\n  > ^ <'],
+                behavior: 'chase',
+                baseColor: '#ffaa00'
+            },
+            bug: {
+                frames: ['    /\\___/\\\n   /       \\\n  l  u   u  l\n--l----*----l--\n   \\_  W  _/\n     |||||', '    /\\___/\\\n   /       \\\n  l  -   -  l\n--l----*----l--\n   \\_  W  _/\n     |||||'],
+                behavior: 'scatter',
+                baseColor: '#00ff00'
+            },
+            fish: {
+                frames: [' /|\n/_| o\n  |/\n  /', ' /|\n/_|o\n  |/\n  /'],
+                behavior: 'school',
+                baseColor: '#00ccff'
+            },
+            bird: {
+                frames: ['    ^__^\n~( oo )\n  (  )~~\n   VV', '    ^__^\n~( -- )\n  (  )~~\n   VV'],
+                behavior: 'circle',
+                baseColor: '#ffff00'
+            },
+            bunny: {
+                frames: ['  ()_()\n  (o.o)\n   > <', '  ()_()\n  (O.O)\n   > <'],
+                behavior: 'hop',
+                baseColor: '#ffccff'
+            },
+            sheep: {
+                frames: ['   ,__,\n   (oo)____\n   (__)    )\\\n      ll--ll', '   ,__,\n   (oo)____\n   (__)    )\\\n      ll--ll'],
+                behavior: 'follow',
+                baseColor: '#eeeeee'
+            },
+            owl: {
+                frames: ['    /\\\n   {@@}\n   (--)\n    II', '    /\\\n   {oo}\n   (--)\n    II'],
+                behavior: 'watch',
+                baseColor: '#8b4513'
+            },
+            frog: {
+                frames: [' /\\_/\\ \n( o o )\n=( I )=\n |_|_|', ' /\\_/\\ \n( - - )\n=( I )=\n |_|_|'],
+                behavior: 'jump',
+                baseColor: '#00ff88'
+            }
+        };
+        
+        class AnimatedCreature {
+            constructor(type, template, index, traits) {
+                this.type = type;
+                this.template = template;
+                this.x = Math.random() * (window.innerWidth - 200);
+                this.y = Math.random() * (window.innerHeight - 150);
+                this.vx = 0;
+                this.vy = 0;
+                this.frameIndex = 0;
+                this.frameCounter = 0;
+                this.behaviorTimer = 0;
+                this.index = index;
+                this.traits = traits;
+                
+                this.element = document.createElement('div');
+                this.element.className = 'creature';
+                this.element.style.left = this.x + 'px';
+                this.element.style.top = this.y + 'px';
+                this.element.style.color = this.getColorFromTraits();
+                this.element.textContent = template.frames[0];
+                
+                this.element.addEventListener('click', () => this.onClick());
+                
+                canvas.appendChild(this.element);
+            }
+            
+            getColorFromTraits() {
+                const colorSchemes = [
+                    this.template.baseColor,
+                    '#00ff00',
+                    '#00ffff',
+                    '#ff00ff',
+                    '#ffff00',
+                    '#ff0000'
+                ];
+                return colorSchemes[this.traits.color_scheme % colorSchemes.length];
+            }
+            
+            onClick() {
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.element.style.transform = 'scale(1.5) rotate(360deg)';
+                setTimeout(() => {
+                    this.element.style.transform = '';
+                }, 300);
+            }
+            
+            update(allCreatures) {
+                this.behaviorTimer++;
+                const speedMult = this.traits.speed_multiplier / 2;
+                const aggression = this.traits.aggression / 10;
+                
+                switch(this.template.behavior) {
+                    case 'chase':
+                        const dx = mouseX - this.x;
+                        const dy = mouseY - this.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist > 50) {
+                            this.vx += dx / dist * 0.3 * speedMult;
+                            this.vy += dy / dist * 0.3 * speedMult;
+                        }
+                        break;
+                        
+                    case 'scatter':
+                        const sdx = mouseX - this.x;
+                        const sdy = mouseY - this.y;
+                        const sdist = Math.sqrt(sdx * sdx + sdy * sdy);
+                        if (sdist < 200) {
+                            this.vx -= sdx / sdist * 0.5 * (1 + aggression);
+                            this.vy -= sdy / sdist * 0.5 * (1 + aggression);
+                        }
+                        break;
+                        
+                    case 'hop':
+                        if (this.behaviorTimer > 60 / speedMult) {
+                            this.vx = (Math.random() - 0.5) * 8 * speedMult;
+                            this.vy = -Math.random() * 5 * speedMult;
+                            this.behaviorTimer = 0;
+                        }
+                        this.vy += 0.2;
+                        break;
+                        
+                    case 'school':
+                        const fish = allCreatures.filter(c => c.template.behavior === 'school');
+                        let avgX = 0, avgY = 0;
+                        fish.forEach(f => {
+                            avgX += f.x;
+                            avgY += f.y;
+                        });
+                        avgX /= fish.length;
+                        avgY /= fish.length;
+                        this.vx += (avgX - this.x) * 0.001 * speedMult;
+                        this.vy += (avgY - this.y) * 0.001 * speedMult;
+                        break;
+                        
+                    case 'circle':
+                        const centerX = window.innerWidth / 2;
+                        const centerY = window.innerHeight / 2;
+                        const radius = 200;
+                        const angle = this.behaviorTimer * 0.02 * speedMult;
+                        const targetX = centerX + Math.cos(angle + this.index) * radius;
+                        const targetY = centerY + Math.sin(angle + this.index) * radius;
+                        this.vx += (targetX - this.x) * 0.01;
+                        this.vy += (targetY - this.y) * 0.01;
+                        break;
+                        
+                    case 'follow':
+                        const sheep = allCreatures.filter(c => c.template.behavior === 'follow');
+                        if (sheep.length > 0 && this !== sheep[0]) {
+                            const leader = sheep[0];
+                            this.vx += (leader.x - this.x) * 0.002 * speedMult;
+                            this.vy += (leader.y - this.y) * 0.002 * speedMult;
+                        } else {
+                            this.vx += (Math.random() - 0.5) * 0.2;
+                            this.vy += (Math.random() - 0.5) * 0.2;
+                        }
+                        break;
+                }
+                
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                if (this.x < 0 || this.x > window.innerWidth - 100) {
+                    this.vx *= -1;
+                    this.x = Math.max(0, Math.min(window.innerWidth - 100, this.x));
+                }
+                if (this.y < 0 || this.y > window.innerHeight - 100) {
+                    this.vy *= -1;
+                    this.y = Math.max(0, Math.min(window.innerHeight - 100, this.y));
+                }
+                
+                this.element.style.left = this.x + 'px';
+                this.element.style.top = this.y + 'px';
+                
+                this.frameCounter++;
+                if (this.frameCounter > 20) {
+                    this.frameIndex = (this.frameIndex + 1) % this.template.frames.length;
+                    this.element.textContent = this.template.frames[this.frameIndex];
+                    this.frameCounter = 0;
+                }
+            }
+            
+            destroy() {
+                this.element.remove();
+            }
+        }
+        
+        let activeCreatures = [];
+        
+        function hashBytes(data) {
+            let hash = 0;
+            for (let i = 0; i < data.length; i++) {
+                hash = ((hash << 5) - hash) + data[i];
+                hash = hash & hash;
+            }
+            return Math.abs(hash);
+        }
+        
+        function updateDnaHash(isBuy, amount) {
+            const newHash = new Uint8Array(32);
+            for (let i = 0; i < 32; i++) {
+                newHash[i] = (demoState.dna_hash[i] + 
+                             (isBuy ? 1 : 0) + 
+                             (amount % 256) + 
+                             (Date.now() % 256) + 
+                             i) % 256;
+            }
+            demoState.dna_hash = Array.from(newHash);
+            demoState.generation++;
+            if (isBuy) {
+                demoState.total_buys += amount;
+            } else {
+                demoState.total_sells += amount;
+            }
+        }
+        
+        function extractTraits() {
+            const h = demoState.dna_hash;
+            const ratio = demoState.total_sells === 0 ? 1 : 
+                         demoState.total_buys / demoState.total_sells;
+            
+            let mood = 'genesis';
+            if (demoState.total_sells > 0) {
+                if (ratio > 2.0) mood = 'very_bullish';
+                else if (ratio > 1.2) mood = 'bullish';
+                else if (ratio > 0.8) mood = 'neutral';
+                else if (ratio > 0.5) mood = 'bearish';
+                else mood = 'very_bearish';
+            }
+            
+            return {
+                cats: (h[0] % 8) + 2,
+                bugs: (h[1] % 12) + 5,
+                fish: (h[2] % 6) + 3,
+                birds: (h[3] % 8) + 2,
+                bunnies: (h[4] % 6) + 2,
+                sheep: (h[5] % 5) + 2,
+                owls: (h[6] % 4) + 1,
+                frogs: (h[7] % 5) + 2,
+                aggression: h[8] % 10,
+                speed_multiplier: (h[9] % 5) + 1,
+                color_scheme: h[16] % 6,
+                density: h[17] % 10,
+                mood: mood
+            };
+        }
+        
+        function updateUI(traits) {
+            document.getElementById('generation').textContent = demoState.generation;
+            document.getElementById('buys').textContent = (demoState.total_buys / 1e24).toFixed(2) + ' Ⓝ';
+            document.getElementById('sells').textContent = (demoState.total_sells / 1e24).toFixed(2) + ' Ⓝ';
+            document.getElementById('cats').textContent = traits.cats;
+            document.getElementById('bugs').textContent = traits.bugs;
+            document.getElementById('fish').textContent = traits.fish;
+            document.getElementById('birds').textContent = traits.birds;
+            document.getElementById('bunnies').textContent = traits.bunnies;
+            document.getElementById('sheep').textContent = traits.sheep;
+            document.getElementById('aggression').textContent = traits.aggression + '/10';
+            document.getElementById('speed').textContent = traits.speed_multiplier + 'x';
+            
+            const moodEl = document.getElementById('mood');
+            moodEl.textContent = traits.mood.replace('_', ' ').toUpperCase();
+            moodEl.className = 'mood-indicator ' + traits.mood;
+        }
+        
+        function rebuildLandscape() {
+            activeCreatures.forEach(c => c.destroy());
+            activeCreatures = [];
+            
+            const traits = extractTraits();
+            updateUI(traits);
+            
+            const creatureCounts = {
+                cat: traits.cats,
+                bug: traits.bugs,
+                fish: traits.fish,
+                bird: traits.birds,
+                bunny: traits.bunnies,
+                sheep: traits.sheep,
+                owl: traits.owls,
+                frog: traits.frogs
+            };
+            
+            let index = 0;
+            for (const [type, count] of Object.entries(creatureCounts)) {
+                for (let i = 0; i < count; i++) {
+                    activeCreatures.push(new AnimatedCreature(
+                        type,
+                        creatureTemplates[type],
+                        index++,
+                        traits
+                    ));
+                }
+            }
+        }
+        
+        function simulateBuy() {
+            const amount = (Math.random() * 2 + 0.5) * 1e24;
+            updateDnaHash(true, amount);
+            rebuildLandscape();
+        }
+        
+        function simulateSell() {
+            const amount = (Math.random() * 2 + 0.5) * 1e24;
+            updateDnaHash(false, amount);
+            rebuildLandscape();
+        }
+        
+        function resetLandscape() {
+            demoState = {
+                dna_hash: new Array(32).fill(0),
+                generation: 0,
+                total_buys: 0,
+                total_sells: 0,
+            };
+            rebuildLandscape();
+        }
+        
+        function animate() {
+            activeCreatures.forEach(c => c.update(activeCreatures));
+            requestAnimationFrame(animate);
+        }
+        
+        // Initialize
+        rebuildLandscape();
+        animate();
+    </script>
+</body>
+</html>
