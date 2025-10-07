@@ -1,1382 +1,754 @@
-function updateUI(traits) {
-            document.getElementById('generation').textContent = contractState.generation;
-            document.getElementById('buys').textContent = (contractState.total_buys / 1e24).toFixed(2) + ' Ⓝ';
-            document.getElementById('sells').textContent = (contractState.total_sells / 1e24).toFixed(2) + ' Ⓝ';
-            document.getElementById('cats').textContent = traits.cats;
-            document.getElementById('bugs').textContent = traits.bugs;
-            document.getElementById('fish').textContent = traits.fish;
-            document.getElementById('birds').textContent = traits.birds;
-            document.getElementById('aggression').textContent = traits.aggression + '/10';
-            document.getElementById('speed').textContent = traits.speed_multiplier + 'x';
-            
-            const moodEl = document.getElementById('mood');
-            moodEl.textContent = traits.mood.replace('_', ' ').toUpperCase();
-            moodEl.className = 'mood-indicator ' + traits.mood;
-            
-            // Population status
-            const ratio = contractState.total_sells === 0 ? 1 : 
-                         contractState.total_buys / contractState.total_sells;
-            
-            let popStatus = 'Population: ';
-            if (ratio > 1.5) popStatus += '📈 Growing (Bullish)';
-            else if (ratio > 1.1) popStatus += '↗ Expanding';
-            else if (ratio < 0.7) popStatus += '📉 Shrinking (Bearish)';
-            else if (ratio < 0.9) popStatus += '↘ Declining';
-            else popStatus += '⚖ Stable';
-            
-            document.getElementById('popStatus').textContent = popStatus;
-            
-            // Evolution status
-            const totalCreatures = activeCreatures.length;
-            const fullyEvolved = activeCreatures.filter(c => c.mutationLevel === 2).length;
-            const partiallyEvolved = activeCreatures.filter(c => c.mutationLevel === 1).length;
-            const original = activeCreatures.filter(c => c.mutationLevel === 0).length;
-            
-            let evolStatus = 'Evolution: ';
-            if (totalCreatures === 0) {
-                evolStatus += 'Genesis';
-            } else {
-                const evolvedPercent = Math.floor(((fullyEvolved + partiallyEvolved * 0.5) / totalCreatures) * 100);
-                evolStatus += `${evolvedPercent}% Evolved (${fullyEvolved}/${partiallyEvolved}/${original})`;
-            }
-            
-            document.getElementById('evolutionStatus').textContent = evolStatus;
-            
-            // Legend status
-            const elders = activeCreatures.filter(c => c.personality === 'elder').length;
-            const leaders = activeCreatures.filter(c => c.personality === 'leader').length;
-            const explorers = activeCreatures.filter(c => c.personality === 'explorer').length;
-            
-            let legendText = '';
-            if (elders > 0) legendText += `👴 ${elders} Elder${elders > 1 ? 's' : ''} `;
-            if (leaders > 0) legendText += `👑 ${leaders} Leader${leaders > 1 ? 's' : ''} `;
-            if (explorers > 0) legendText += `🔍 ${explorers} Explorer${explorers > 1 ? 's' : ''}`;
-            
-            document.getElementById('legendStatus').textContent = legendText || 'No legends yet';
-        }<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEAR ASCII Landscape - With History</title>
+    <title>NEAR Asciimals</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
-            background: #0a0a0a;
+            background: #000;
+            color: #00ff00;
             font-family: 'Courier New', monospace;
-            color: #00ff00;
             overflow: hidden;
-            transition: background 2s;
+            height: 100vh;
         }
-        
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -1;
-        }
-        
-        body.prosperous::before {
-            background: linear-gradient(to bottom, #001a00, #0a0a0a);
-        }
-        
-        body.wasteland::before {
-            background: linear-gradient(to bottom, #1a0000, #0a0a0a);
-        }
-        
-        #environment {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 0;
-        }
-        
-        .env-element {
-            position: absolute;
-            white-space: pre;
-            font-size: 20px;
-            opacity: 0.3;
-            animation: sway 4s ease-in-out infinite;
-        }
-        
-        @keyframes sway {
-            0%, 100% { transform: translateX(0); }
-            50% { transform: translateX(5px); }
-        }
-        
-        .monument {
-            position: absolute;
-            white-space: pre;
-            font-size: 12px;
-            color: #666;
-            opacity: 0.5;
-            pointer-events: auto;
-            cursor: help;
-        }
-        
-        .monument:hover {
-            opacity: 1;
-            color: #00ff00;
-        }
-        
-        .ghost {
-            opacity: 0.3 !important;
-            animation: float 3s ease-in-out infinite;
-        }
-        
-        @keyframes float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
-        }
-        
-        #canvas {
-            width: 100vw;
+
+        #container {
+            display: flex;
             height: 100vh;
             position: relative;
-            z-index: 1;
         }
-        
+
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #world {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            transition: background 2s ease;
+        }
+
         .creature {
             position: absolute;
-            white-space: pre;
-            font-size: 14px;
-            line-height: 14px;
-            text-shadow: 0 0 10px currentColor;
+            font-size: 24px;
             cursor: pointer;
-            transition: transform 0.2s, color 0.5s;
+            user-select: none;
+            z-index: 10;
+            transition: color 0.5s ease;
+            animation: float 3s ease-in-out infinite;
         }
-        
-        .creature:hover {
-            transform: scale(1.2);
-            filter: brightness(1.5);
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
         }
-        
-        .creature[data-mutation="1"] {
-            text-shadow: 0 0 15px currentColor;
-            font-weight: bold;
-        }
-        
-        .creature[data-mutation="2"] {
-            text-shadow: 0 0 20px currentColor, 0 0 30px currentColor;
-            font-weight: bold;
-            filter: brightness(1.2);
-        }
-        
-        .creature[data-personality="leader"] {
-            font-size: 16px;
-        }
-        
-        .creature[data-personality="explorer"] {
-            animation: pulse 2s ease-in-out infinite;
-        }
-        
-        .creature[data-personality="elder"] {
-            opacity: 0.9;
-            font-style: italic;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { filter: brightness(1); }
-            50% { filter: brightness(1.3); }
-        }
-        
-        .creature-badge {
+
+        .scenery {
             position: absolute;
-            font-size: 10px;
-            top: -12px;
-            left: 50%;
-            transform: translateX(-50%);
-            pointer-events: none;
+            font-size: 20px;
+            user-select: none;
+            opacity: 0.6;
+            z-index: 5;
         }
-        
-        #info-panel {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.9);
-            border: 2px solid #00ff00;
-            padding: 20px;
-            max-width: 320px;
-            font-size: 12px;
-            z-index: 1000;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-        
-        #achievements {
-            position: fixed;
-            bottom: 80px;
-            left: 20px;
-            background: rgba(0, 0, 0, 0.9);
-            border: 2px solid #00ff00;
+
+        #sidebar {
+            width: 350px;
+            background: rgba(0, 20, 0, 0.9);
+            border-left: 2px solid #00ff00;
             padding: 15px;
-            max-width: 280px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .panel {
+            border: 1px solid #00ff00;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        .panel h3 {
+            margin-bottom: 8px;
+            color: #00ff00;
+            text-shadow: 0 0 5px #00ff00;
+            font-size: 14px;
+        }
+
+        .panel-content {
             font-size: 11px;
-            z-index: 1000;
+            line-height: 1.4;
         }
-        
-        .achievement {
-            margin: 5px 0;
-            padding: 5px;
-            background: rgba(0, 50, 0, 0.3);
-            border-left: 3px solid #00ff00;
-        }
-        
-        .achievement.locked {
-            opacity: 0.4;
-            border-left-color: #333;
-        }
-        
-        .milestone-popup {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.95);
-            border: 3px solid #00ff00;
-            padding: 30px;
-            z-index: 2000;
-            text-align: center;
-            animation: popIn 0.5s ease-out;
-        }
-        
-        @keyframes popIn {
-            0% { transform: translate(-50%, -50%) scale(0); }
-            100% { transform: translate(-50%, -50%) scale(1); }
-        }
-        
-        #info-panel h2 {
-            margin-bottom: 10px;
-            color: #00ff00;
-            font-size: 16px;
-        }
-        
-        #info-panel h3 {
-            margin-top: 15px;
-            margin-bottom: 5px;
-            color: #00ff00;
-            font-size: 13px;
-            border-top: 1px solid #00ff00;
-            padding-top: 10px;
-        }
-        
-        .stat {
-            margin: 5px 0;
+
+        .stat-line {
             display: flex;
             justify-content: space-between;
+            margin: 3px 0;
         }
-        
-        .label {
-            color: #00aa00;
-        }
-        
-        #controls {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.9);
-            border: 2px solid #00ff00;
-            padding: 20px;
-            display: flex;
-            gap: 10px;
-            z-index: 1000;
-            flex-wrap: wrap;
-            max-width: 600px;
-            justify-content: center;
-        }
-        
+
         button {
-            background: #003300;
-            color: #00ff00;
+            background: #001a00;
             border: 2px solid #00ff00;
-            padding: 10px 20px;
-            font-family: 'Courier New', monospace;
+            color: #00ff00;
+            padding: 8px 16px;
             cursor: pointer;
-            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
             transition: all 0.2s;
         }
-        
+
         button:hover {
             background: #00ff00;
             color: #000;
-            box-shadow: 0 0 20px #00ff00;
+            box-shadow: 0 0 10px #00ff00;
         }
-        
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
         }
-        
-        .mood-indicator {
-            font-size: 24px;
-            text-align: center;
-            margin: 10px 0;
+
+        .achievement {
+            padding: 5px;
+            margin: 3px 0;
+            border-left: 3px solid #00ff00;
+            background: rgba(0, 255, 0, 0.1);
+            font-size: 10px;
         }
-        
-        .very_bullish { color: #00ff00; }
-        .bullish { color: #88ff88; }
-        .neutral { color: #ffff00; }
-        .bearish { color: #ff8888; }
-        .very_bearish { color: #ff0000; }
-        .genesis { color: #888888; }
-        
-        #connection-status {
+
+        .achievement.locked {
+            opacity: 0.3;
+            border-left-color: #004400;
+        }
+
+        .notification {
             position: fixed;
             top: 20px;
-            left: 20px;
-            padding: 10px;
-            background: rgba(0, 0, 0, 0.9);
-            border: 2px solid #00ff00;
-            font-size: 11px;
-            max-width: 250px;
+            right: 370px;
+            background: rgba(0, 255, 0, 0.95);
+            color: #000;
+            padding: 15px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            animation: slideIn 0.5s, slideOut 0.5s 2.5s;
+            z-index: 1000;
         }
-        
-        .connected { color: #00ff00; }
-        .disconnected { color: #ff8800; }
-        
-        .trade-log {
-            max-height: 150px;
-            overflow-y: auto;
+
+        @keyframes slideIn {
+            from { transform: translateX(400px); }
+            to { transform: translateX(0); }
+        }
+
+        @keyframes slideOut {
+            from { transform: translateX(0); }
+            to { transform: translateX(400px); }
+        }
+
+        .trade-log-item {
             font-size: 10px;
-            margin-top: 5px;
-            padding: 5px;
-            background: rgba(0, 50, 0, 0.3);
-            border: 1px solid #00ff00;
+            padding: 3px;
+            border-bottom: 1px solid #003300;
         }
-        
-        .trade-entry {
-            margin: 2px 0;
-            padding: 2px;
-        }
-        
+
         .buy { color: #00ff00; }
-        .sell { color: #ff6666; }
-        
-        #history-chart {
-            margin-top: 10px;
-            padding: 5px;
-            background: rgba(0, 50, 0, 0.3);
-            border: 1px solid #00ff00;
-            height: 60px;
-            position: relative;
-        }
-        
-        .chart-bar {
-            display: inline-block;
-            width: 3px;
+        .sell { color: #ff3300; }
+
+        .volume-bar {
+            height: 8px;
             background: #00ff00;
-            margin: 0 1px;
-            vertical-align: bottom;
+            margin: 2px 0;
+            transition: width 0.3s;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.95);
+            border: 2px solid #00ff00;
+            padding: 10px;
+            font-size: 11px;
+            z-index: 100;
+            pointer-events: none;
+            max-width: 250px;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        }
+
+        .legend-icon {
+            display: inline-block;
+            margin-left: 5px;
         }
     </style>
 </head>
 <body>
-    <div id="connection-status">
-        <div class="disconnected">⚠ DEMO MODE</div>
-        <div style="font-size: 9px; margin-top: 5px;">
-            This demo simulates the contract + indexer pattern.
-            <br><br>
-            <strong>Architecture:</strong><br>
-            • Contract: Current state only<br>
-            • Indexer: Full history<br>
-            • Frontend: Queries both
+    <div id="container">
+        <div id="canvas-container">
+            <div id="world"></div>
+        </div>
+        
+        <div id="sidebar">
+            <div class="panel">
+                <h3>🌍 ECOSYSTEM STATUS</h3>
+                <div class="panel-content" id="info-panel">
+                    <div class="stat-line"><span>Generation:</span><span id="gen">0</span></div>
+                    <div class="stat-line"><span>Population:</span><span id="pop">0</span></div>
+                    <div class="stat-line"><span>Evolved:</span><span id="evolved">0</span></div>
+                    <div class="stat-line"><span>Elders:</span><span id="elders">0</span></div>
+                    <div class="stat-line"><span>Leaders:</span><span id="leaders">0</span></div>
+                    <div class="stat-line"><span>Explorers:</span><span id="explorers">0</span></div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>📊 TRADING STATS</h3>
+                <div class="panel-content">
+                    <div class="stat-line"><span>Total Buys:</span><span id="buys">0</span></div>
+                    <div class="stat-line"><span>Total Sells:</span><span id="sells">0</span></div>
+                    <div class="stat-line"><span>Mood:</span><span id="mood">NEUTRAL</span></div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>🧬 DNA TRAITS</h3>
+                <div class="panel-content" id="traits-panel">
+                    <div class="stat-line"><span>Aggression:</span><span id="aggression">50%</span></div>
+                    <div class="stat-line"><span>Speed:</span><span id="speed">50%</span></div>
+                    <div class="stat-line"><span>Diversity:</span><span id="diversity">50%</span></div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>🏆 ACHIEVEMENTS</h3>
+                <div class="panel-content" id="achievements-panel"></div>
+            </div>
+
+            <div class="panel">
+                <h3>📜 TRADE LOG</h3>
+                <div class="panel-content" id="trade-log"></div>
+            </div>
+
+            <div class="panel">
+                <h3>📈 VOLUME</h3>
+                <div class="panel-content" id="volume-chart"></div>
+            </div>
+
+            <div class="controls">
+                <button onclick="game.trade('buy')">🔼 BUY</button>
+                <button onclick="game.trade('sell')">🔽 SELL</button>
+                <button onclick="game.showHistory()">📊 HISTORY</button>
+                <button onclick="game.reset()">🔄 RESET</button>
+            </div>
         </div>
     </div>
-    
-    <div id="environment"></div>
-    <div id="canvas"></div>
-    
-    <div id="achievements">
-        <h3 style="margin: 0 0 10px 0; color: #00ff00;">🏆 Achievements</h3>
-        <div id="achievementList"></div>
-    </div>
-    
-    <div id="info-panel">
-        <h2>🌍 ASCII Landscape</h2>
-        <div class="mood-indicator" id="mood">GENESIS</div>
-        
-        <h3>Current State (from contract)</h3>
-        <div class="stat">
-            <span class="label">Generation:</span>
-            <span id="generation">0</span>
-        </div>
-        <div class="stat">
-            <span class="label">Total Buys:</span>
-            <span id="buys">0 Ⓝ</span>
-        </div>
-        <div class="stat">
-            <span class="label">Total Sells:</span>
-            <span id="sells">0 Ⓝ</span>
-        </div>
-        
-        <h3>Creatures (DNA-derived)</h3>
-        <div class="stat">
-            <span class="label">🐱 Cats:</span>
-            <span id="cats">2</span>
-        </div>
-        <div class="stat">
-            <span class="label">🐛 Bugs:</span>
-            <span id="bugs">5</span>
-        </div>
-        <div class="stat">
-            <span class="label">🐟 Fish:</span>
-            <span id="fish">3</span>
-        </div>
-        <div class="stat">
-            <span class="label">🐦 Birds:</span>
-            <span id="birds">2</span>
-        </div>
-        <div style="font-size: 10px; margin-top: 5px; color: #888;">
-            <span id="popStatus">Population: Stable</span><br>
-            <span id="evolutionStatus">Evolution: Genesis</span><br>
-            <span id="legendStatus"></span>
-        </div>
-        
-        <h3>Traits</h3>
-        <div class="stat">
-            <span class="label">Aggression:</span>
-            <span id="aggression">5/10</span>
-        </div>
-        <div class="stat">
-            <span class="label">Speed:</span>
-            <span id="speed">1x</span>
-        </div>
-        
-        <h3>Recent Trades (from indexer)</h3>
-        <div class="trade-log" id="tradeLog">
-            <div style="text-align: center; color: #666;">No trades yet</div>
-        </div>
-        
-        <h3>Volume Chart</h3>
-        <div id="history-chart"></div>
-    </div>
-    
-    <div id="controls">
-        <button onclick="simulateBuy()">📈 BUY</button>
-        <button onclick="simulateSell()">📉 SELL</button>
-        <button onclick="viewHistory()">📊 HISTORY</button>
-        <button onclick="resetLandscape()">🔄 RESET</button>
-    </div>
-    
+
     <script>
-        // Simulated contract state (bounded)
-        let contractState = {
-            dna_hash: new Array(32).fill(0),
-            generation: 0,
-            total_buys: 0,
-            total_sells: 0,
-            last_updated: Date.now()
+        const CREATURE_TYPES = {
+            cat: { chars: ['🐱', '🐈'], behavior: 'chase' },
+            bug: { chars: ['🐛', '🐜'], behavior: 'scatter' },
+            fish: { chars: ['🐟', '🐠'], behavior: 'school' },
+            bird: { chars: ['🐦', '🕊️'], behavior: 'circle' },
+            bunny: { chars: ['🐰', '🐇'], behavior: 'hop' },
+            sheep: { chars: ['🐑', '🐏'], behavior: 'follow' },
+            owl: { chars: ['🦉', '🦅'], behavior: 'watch' },
+            frog: { chars: ['🐸', '🦎'], behavior: 'jump' }
         };
-        
-        // Simulated indexer database (unlimited)
-        let indexerDB = {
-            trades: [],
-            snapshots: []
-        };
-        
-        // Milestone tracking
-        let milestones = {
-            achievements: [],
-            monuments: [],
-            legends: [],
-            maxPopulation: 0,
-            longestBullRun: 0,
-            longestBearRun: 0,
-            currentBullStreak: 0,
-            currentBearStreak: 0,
-            totalVolume: 0
-        };
-        
-        // Achievement definitions
-        const achievementDefs = [
-            { id: 'first_trade', name: 'Genesis', desc: 'Make your first trade', threshold: 1 },
-            { id: 'generation_10', name: 'Decade', desc: 'Reach generation 10', threshold: 10 },
-            { id: 'generation_50', name: 'Golden Age', desc: 'Reach generation 50', threshold: 50 },
-            { id: 'generation_100', name: 'Century', desc: 'Reach generation 100', threshold: 100 },
-            { id: 'big_population', name: 'Metropolis', desc: 'Reach 60+ creatures', threshold: 60 },
-            { id: 'bull_run', name: 'Bull Stampede', desc: '10 buys in a row', threshold: 10 },
-            { id: 'bear_market', name: 'Winter Is Coming', desc: '10 sells in a row', threshold: 10 },
-            { id: 'volume_king', name: 'Whale Trader', desc: 'Trade 100+ NEAR total', threshold: 100 },
-            { id: 'balanced', name: 'Harmonious', desc: 'Keep buy/sell ratio between 0.9-1.1', threshold: 1 },
+
+        const ACHIEVEMENTS = [
+            { id: 'genesis', name: 'Genesis', desc: 'First generation', condition: () => game.generation >= 1 },
+            { id: 'decade', name: 'Decade', desc: 'Reach generation 10', condition: () => game.generation >= 10 },
+            { id: 'golden', name: 'Golden Age', desc: '100 population', condition: () => game.creatures.length >= 100 },
+            { id: 'century', name: 'Century', desc: 'Reach generation 100', condition: () => game.generation >= 100 },
+            { id: 'metropolis', name: 'Metropolis', desc: '500 population', condition: () => game.creatures.length >= 500 },
+            { id: 'bull', name: 'Bull Stampede', desc: '10 consecutive buys', condition: () => game.consecutiveBuys >= 10 },
+            { id: 'winter', name: 'Winter Is Coming', desc: '10 consecutive sells', condition: () => game.consecutiveSells >= 10 },
+            { id: 'whale', name: 'Whale Trader', desc: '100 total trades', condition: () => game.totalTrades >= 100 },
+            { id: 'harmony', name: 'Harmonious', desc: '50/50 buy/sell ratio', condition: () => Math.abs(game.buyCount - game.sellCount) <= 5 && game.totalTrades >= 50 }
         ];
-        
-        const canvas = document.getElementById('canvas');
-        const environment = document.getElementById('environment');
-        let mouseX = window.innerWidth / 2;
-        let mouseY = window.innerHeight / 2;
-        
-        document.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-        });
-        
-        const creatureTemplates = {
-            cat: {
-                frames: ['  /\\_/\\\n ( o.o )\n  > ^ <', '  /\\_/\\\n ( -.- )\n  > ^ <'],
-                behavior: 'chase',
-                baseColor: '#ffaa00'
-            },
-            bug: {
-                frames: ['    /\\___/\\\n   /       \\\n  l  u   u  l\n--l----*----l--\n   \\_  W  _/\n     |||||', '    /\\___/\\\n   /       \\\n  l  -   -  l\n--l----*----l--\n   \\_  W  _/\n     |||||'],
-                behavior: 'scatter',
-                baseColor: '#00ff00'
-            },
-            fish: {
-                frames: [' /|\n/_| o\n  |/\n  /', ' /|\n/_|o\n  |/\n  /'],
-                behavior: 'school',
-                baseColor: '#00ccff'
-            },
-            bird: {
-                frames: ['    ^__^\n~( oo )\n  (  )~~\n   VV', '    ^__^\n~( -- )\n  (  )~~\n   VV'],
-                behavior: 'circle',
-                baseColor: '#ffff00'
-            },
-            bunny: {
-                frames: ['  ()_()\n  (o.o)\n   > <', '  ()_()\n  (O.O)\n   > <'],
-                behavior: 'hop',
-                baseColor: '#ffccff'
-            },
-            sheep: {
-                frames: ['   ,__,\n   (oo)____\n   (__)    )\\\n      ll--ll', '   ,__,\n   (oo)____\n   (__)    )\\\n      ll--ll'],
-                behavior: 'follow',
-                baseColor: '#eeeeee'
-            },
-            owl: {
-                frames: ['    /\\\n   {@@}\n   (--)\n    II', '    /\\\n   {oo}\n   (--)\n    II'],
-                behavior: 'watch',
-                baseColor: '#8b4513'
-            },
-            frog: {
-                frames: [' /\\_/\\ \n( o o )\n=( I )=\n |_|_|', ' /\\_/\\ \n( - - )\n=( I )=\n |_|_|'],
-                behavior: 'jump',
-                baseColor: '#00ff88'
-            }
-        };
-        
-        class AnimatedCreature {
-            constructor(type, template, index, traits, mutationLevel = 0) {
+
+        class Creature {
+            constructor(type, x, y, dna, generation) {
                 this.type = type;
-                this.template = template;
-                this.x = Math.random() * (window.innerWidth - 200);
-                this.y = Math.random() * (window.innerHeight - 150);
-                this.vx = 0;
-                this.vy = 0;
+                this.x = x;
+                this.y = y;
+                this.dna = dna;
+                this.generation = generation;
+                this.age = 0;
                 this.frameIndex = 0;
-                this.frameCounter = 0;
-                this.behaviorTimer = 0;
-                this.index = index;
-                this.traits = traits;
-                this.mutationLevel = mutationLevel; // 0 = original, 1 = partially evolved, 2 = fully evolved
-                this.birthGeneration = contractState.generation;
-                
+                this.frameTimer = 0;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.element = null;
+                this.legendary = null;
+                this.createDOM();
+            }
+
+            createDOM() {
                 this.element = document.createElement('div');
                 this.element.className = 'creature';
-                this.element.setAttribute('data-mutation', mutationLevel);
                 this.element.style.left = this.x + 'px';
                 this.element.style.top = this.y + 'px';
-                this.element.style.color = this.getColorFromTraits();
-                this.element.textContent = template.frames[0];
-                
-                canvas.appendChild(this.element);
+                this.element.textContent = CREATURE_TYPES[this.type].chars[0];
+                this.element.onclick = () => this.showTooltip();
+                this.updateColor();
+                document.getElementById('world').appendChild(this.element);
             }
-            
-            getColorFromTraits() {
-                const colorSchemes = [
-                    this.template.baseColor,
-                    '#00ff00',
-                    '#00ffff',
-                    '#ff00ff',
-                    '#ffff00',
-                    '#ff6666'
-                ];
+
+            updateColor() {
+                const totalGens = game.generation;
+                const agePercent = this.age / totalGens;
                 
-                let baseColor = colorSchemes[this.traits.color_scheme % colorSchemes.length];
-                
-                // Mutated creatures have different colors
-                if (this.mutationLevel === 1) {
-                    // Mix with new color
-                    const newColor = colorSchemes[(this.traits.color_scheme + 1) % colorSchemes.length];
-                    return this.blendColors(baseColor, newColor, 0.5);
-                } else if (this.mutationLevel === 2) {
-                    // Fully new color
-                    return colorSchemes[(this.traits.color_scheme + 1) % colorSchemes.length];
+                if (agePercent >= 0.7) {
+                    this.element.style.color = '#00ff00';
+                    this.element.style.textShadow = '0 0 10px #00ff00';
+                } else if (agePercent >= 0.3) {
+                    this.element.style.color = '#88ff88';
+                    this.element.style.textShadow = '0 0 5px #88ff88';
+                } else {
+                    this.element.style.color = '#44ff44';
+                    this.element.style.textShadow = 'none';
                 }
-                
-                return baseColor;
+
+                // Check for legendary status
+                if (this.age >= 50 && !this.legendary) {
+                    this.legendary = 'elder';
+                    this.element.textContent += '👴';
+                } else if (this.age >= 25 && !this.legendary) {
+                    this.legendary = 'leader';
+                    this.element.textContent = CREATURE_TYPES[this.type].chars[this.frameIndex] + '👑';
+                } else if (this.age >= 15 && !this.legendary) {
+                    this.legendary = 'explorer';
+                    this.element.textContent = CREATURE_TYPES[this.type].chars[this.frameIndex] + '🔍';
+                }
             }
-            
-            blendColors(color1, color2, ratio) {
-                // Simple color blending for visual evolution
-                const c1 = parseInt(color1.slice(1), 16);
-                const c2 = parseInt(color2.slice(1), 16);
+
+            update(mouseX, mouseY, creatures) {
+                this.age++;
+                this.frameTimer++;
                 
-                const r1 = (c1 >> 16) & 255;
-                const g1 = (c1 >> 8) & 255;
-                const b1 = c1 & 255;
-                
-                const r2 = (c2 >> 16) & 255;
-                const g2 = (c2 >> 8) & 255;
-                const b2 = c2 & 255;
-                
-                const r = Math.floor(r1 * (1 - ratio) + r2 * ratio);
-                const g = Math.floor(g1 * (1 - ratio) + g2 * ratio);
-                const b = Math.floor(b1 * (1 - ratio) + b2 * ratio);
-                
-                return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
-            }
-            
-            getSpeedMultiplier() {
-                let base = this.traits.speed_multiplier / 2;
-                
-                // Mutated creatures are slightly faster
-                if (this.mutationLevel > 0) {
-                    base *= 1.2;
+                if (this.frameTimer > 30) {
+                    this.frameTimer = 0;
+                    this.frameIndex = 1 - this.frameIndex;
+                    let baseChar = CREATURE_TYPES[this.type].chars[this.frameIndex];
+                    if (this.legendary === 'elder') baseChar += '👴';
+                    else if (this.legendary === 'leader') baseChar += '👑';
+                    else if (this.legendary === 'explorer') baseChar += '🔍';
+                    this.element.textContent = baseChar;
                 }
-                
-                // Personality modifiers
-                if (this.personality === 'explorer') {
-                    base *= 1.5; // Explorers are faster
-                } else if (this.personality === 'elder') {
-                    base *= 0.7; // Elders are slower but wiser
-                }
-                
-                return base;
-            }
-            
-            update(allCreatures) {
-                this.behaviorTimer++;
-                
-                // Adjust behavior based on mood
-                let speedMult = this.getSpeedMultiplier();
-                let aggression = this.traits.aggression / 10;
-                
-                // Mood affects behavior dramatically
-                if (this.traits.mood === 'very_bullish') {
-                    speedMult *= 1.5;  // Fast and energetic
-                    aggression *= 0.5; // Friendly
-                } else if (this.traits.mood === 'bullish') {
-                    speedMult *= 1.2;
-                    aggression *= 0.7;
-                } else if (this.traits.mood === 'bearish') {
-                    speedMult *= 0.7;
-                    aggression *= 1.3; // More aggressive
-                } else if (this.traits.mood === 'very_bearish') {
-                    speedMult *= 0.5;  // Slow and cautious
-                    aggression *= 1.8; // Very aggressive
-                }
-                
-                switch(this.template.behavior) {
+
+                const behavior = CREATURE_TYPES[this.type].behavior;
+                const speed = game.traits.speed / 100;
+
+                switch(behavior) {
                     case 'chase':
                         const dx = mouseX - this.x;
                         const dy = mouseY - this.y;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-                        
-                        // In bearish mood, cats are more skittish
-                        const chaseDistance = this.traits.mood.includes('bearish') ? 150 : 50;
-                        
-                        if (dist > chaseDistance) {
-                            this.vx += dx / dist * 0.3 * speedMult;
-                            this.vy += dy / dist * 0.3 * speedMult;
-                        } else if (this.traits.mood.includes('bearish') && dist < 100) {
-                            // Run away when bearish
-                            this.vx -= dx / dist * 0.2 * speedMult;
-                            this.vy -= dy / dist * 0.2 * speedMult;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist > 50) {
+                            this.vx += (dx / dist) * 0.1 * speed;
+                            this.vy += (dy / dist) * 0.1 * speed;
                         }
                         break;
-                        
                     case 'scatter':
                         const sdx = mouseX - this.x;
                         const sdy = mouseY - this.y;
-                        const sdist = Math.sqrt(sdx * sdx + sdy * sdy);
-                        
-                        // More reactive in bearish mood
-                        const scatterDistance = this.traits.mood.includes('bearish') ? 300 : 200;
-                        
-                        if (sdist < scatterDistance) {
-                            this.vx -= sdx / sdist * 0.5 * (1 + aggression);
-                            this.vy -= sdy / sdist * 0.5 * (1 + aggression);
+                        const sdist = Math.sqrt(sdx*sdx + sdy*sdy);
+                        if (sdist < 100) {
+                            this.vx -= (sdx / sdist) * 0.2 * speed;
+                            this.vy -= (sdy / sdist) * 0.2 * speed;
                         }
                         break;
-                        
-                    case 'hop':
-                        const hopInterval = this.traits.mood.includes('bullish') ? 40 : 80;
-                        if (this.behaviorTimer > hopInterval / speedMult) {
-                            this.vx = (Math.random() - 0.5) * 8 * speedMult;
-                            this.vy = -Math.random() * 5 * speedMult;
-                            this.behaviorTimer = 0;
-                        }
-                        this.vy += 0.2;
-                        break;
-                        
                     case 'school':
-                        const fish = allCreatures.filter(c => c.template.behavior === 'school');
-                        let avgX = 0, avgY = 0;
-                        fish.forEach(f => {
-                            avgX += f.x;
-                            avgY += f.y;
-                        });
-                        avgX /= fish.length;
-                        avgY /= fish.length;
-                        
-                        // Tighter schooling when bearish (safety in numbers)
-                        const cohesion = this.traits.mood.includes('bearish') ? 0.003 : 0.001;
-                        this.vx += (avgX - this.x) * cohesion * speedMult;
-                        this.vy += (avgY - this.y) * cohesion * speedMult;
+                        const nearby = creatures.filter(c => 
+                            c !== this && c.type === this.type &&
+                            Math.abs(c.x - this.x) < 100 && Math.abs(c.y - this.y) < 100
+                        );
+                        if (nearby.length > 0) {
+                            const avgX = nearby.reduce((s, c) => s + c.vx, 0) / nearby.length;
+                            const avgY = nearby.reduce((s, c) => s + c.vy, 0) / nearby.length;
+                            this.vx += (avgX - this.vx) * 0.1;
+                            this.vy += (avgY - this.vy) * 0.1;
+                        }
                         break;
-                        
                     case 'circle':
-                        const centerX = window.innerWidth / 2;
-                        const centerY = window.innerHeight / 2;
-                        
-                        // Wider circles when bullish, tighter when bearish
-                        const radius = this.traits.mood.includes('bullish') ? 300 : 150;
-                        const angle = this.behaviorTimer * 0.02 * speedMult;
-                        const targetX = centerX + Math.cos(angle + this.index) * radius;
-                        const targetY = centerY + Math.sin(angle + this.index) * radius;
-                        this.vx += (targetX - this.x) * 0.01;
-                        this.vy += (targetY - this.y) * 0.01;
+                        const angle = Math.atan2(mouseY - this.y, mouseX - this.x);
+                        this.vx += Math.cos(angle + Math.PI/2) * 0.1 * speed;
+                        this.vy += Math.sin(angle + Math.PI/2) * 0.1 * speed;
                         break;
-                        
+                    case 'hop':
+                        if (Math.random() < 0.02) {
+                            this.vx = (Math.random() - 0.5) * 4 * speed;
+                            this.vy = (Math.random() - 0.5) * 4 * speed;
+                        }
+                        break;
                     case 'follow':
-                        const sheep = allCreatures.filter(c => c.template.behavior === 'follow');
-                        if (sheep.length > 0 && this !== sheep[0]) {
-                            const leader = sheep[0];
-                            // Stick closer together when bearish
-                            const followStrength = this.traits.mood.includes('bearish') ? 0.004 : 0.002;
-                            this.vx += (leader.x - this.x) * followStrength * speedMult;
-                            this.vy += (leader.y - this.y) * followStrength * speedMult;
-                        } else {
-                            this.vx += (Math.random() - 0.5) * 0.2;
-                            this.vy += (Math.random() - 0.5) * 0.2;
+                        const leader = creatures.find(c => c.legendary === 'leader' && c !== this);
+                        if (leader) {
+                            const ldx = leader.x - this.x;
+                            const ldy = leader.y - this.y;
+                            this.vx += ldx * 0.001 * speed;
+                            this.vy += ldy * 0.001 * speed;
                         }
                         break;
-                        
                     case 'watch':
-                        // Owls turn to watch mouse
-                        const angle2 = Math.atan2(mouseY - this.y, mouseX - this.x);
-                        this.vx = Math.cos(angle2) * 0.1 * speedMult;
-                        this.vy = Math.sin(angle2) * 0.1 * speedMult;
+                        this.vx *= 0.95;
+                        this.vy *= 0.95;
                         break;
-                        
                     case 'jump':
-                        const jumpInterval = this.traits.mood.includes('bullish') ? 60 : 100;
-                        if (this.behaviorTimer > jumpInterval / speedMult) {
-                            this.vx = (Math.random() - 0.5) * 6 * speedMult;
-                            this.vy = (Math.random() - 0.5) * 6 * speedMult;
-                            this.behaviorTimer = 0;
+                        if (Math.random() < 0.03) {
+                            this.vy -= 3 * speed;
                         }
+                        this.vy += 0.1;
                         break;
                 }
+
+                this.vx *= 0.98;
+                this.vy *= 0.98;
                 
-                this.vx *= 0.95;
-                this.vy *= 0.95;
-                
+                const maxSpeed = 3 * speed;
+                const currentSpeed = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+                if (currentSpeed > maxSpeed) {
+                    this.vx = (this.vx / currentSpeed) * maxSpeed;
+                    this.vy = (this.vy / currentSpeed) * maxSpeed;
+                }
+
                 this.x += this.vx;
                 this.y += this.vy;
-                
-                if (this.x < 0 || this.x > window.innerWidth - 100) {
-                    this.vx *= -1;
-                    this.x = Math.max(0, Math.min(window.innerWidth - 100, this.x));
-                }
-                if (this.y < 0 || this.y > window.innerHeight - 100) {
-                    this.vy *= -1;
-                    this.y = Math.max(0, Math.min(window.innerHeight - 100, this.y));
-                }
-                
+
+                const bounds = game.worldBounds;
+                if (this.x < 0) { this.x = 0; this.vx *= -1; }
+                if (this.x > bounds.width) { this.x = bounds.width; this.vx *= -1; }
+                if (this.y < 0) { this.y = 0; this.vy *= -1; }
+                if (this.y > bounds.height) { this.y = bounds.height; this.vy *= -1; }
+
                 this.element.style.left = this.x + 'px';
                 this.element.style.top = this.y + 'px';
-                
-                this.frameCounter++;
-                if (this.frameCounter > 20) {
-                    this.frameIndex = (this.frameIndex + 1) % this.template.frames.length;
-                    this.element.textContent = this.template.frames[this.frameIndex];
-                    this.frameCounter = 0;
-                }
+                this.updateColor();
             }
-            
+
+            showTooltip() {
+                const tooltip = document.createElement('div');
+                tooltip.className = 'tooltip';
+                tooltip.style.left = (this.x + 30) + 'px';
+                tooltip.style.top = this.y + 'px';
+                tooltip.innerHTML = `
+                    <strong>${this.type.toUpperCase()}</strong><br>
+                    Generation: ${this.generation}<br>
+                    Age: ${this.age} gens<br>
+                    ${this.legendary ? `Status: ${this.legendary.toUpperCase()}<br>` : ''}
+                    Behavior: ${CREATURE_TYPES[this.type].behavior}
+                `;
+                document.getElementById('world').appendChild(tooltip);
+                setTimeout(() => tooltip.remove(), 2000);
+            }
+
             destroy() {
-                this.element.remove();
+                if (this.element) {
+                    this.element.remove();
+                }
             }
         }
-        
-        let activeCreatures = [];
-        
-        // Simulate contract: update DNA hash more gradually
-        function updateContractState(isBuy, amount) {
-            const newHash = new Uint8Array(32);
-            
-            // Gradually evolve the hash based on trade direction and volume
-            const influence = Math.floor(amount / 1e24); // NEAR amount influence
-            
-            for (let i = 0; i < 32; i++) {
-                // Small incremental changes rather than random jumps
-                let change = 0;
+
+        const game = {
+            generation: 0,
+            creatures: [],
+            scenery: [],
+            dnaHash: new Uint8Array(80),
+            traits: { aggression: 50, speed: 50, diversity: 50 },
+            buyCount: 0,
+            sellCount: 0,
+            totalTrades: 0,
+            consecutiveBuys: 0,
+            consecutiveSells: 0,
+            tradeHistory: [],
+            unlockedAchievements: new Set(),
+            mouseX: 0,
+            mouseY: 0,
+            worldBounds: { width: 0, height: 0 },
+            peakPopulation: 0,
+
+            init() {
+                this.updateWorldBounds();
+                window.addEventListener('resize', () => this.updateWorldBounds());
                 
-                if (isBuy) {
-                    // Buys nudge hash values upward
-                    change = Math.floor(influence / 2) + 1;
-                } else {
-                    // Sells nudge hash values downward
-                    change = -(Math.floor(influence / 2) + 1);
-                }
-                
-                // Apply change with wrapping
-                newHash[i] = (contractState.dna_hash[i] + change + 256) % 256;
-            }
-            
-            contractState.dna_hash = Array.from(newHash);
-            contractState.generation++;
-            contractState.last_updated = Date.now();
-            
-            if (isBuy) {
-                contractState.total_buys += amount;
-            } else {
-                contractState.total_sells += amount;
-            }
-            
-            // Emit event to indexer
-            emitEventToIndexer(isBuy, amount);
-        }
-        
-        // Simulate indexer: capture events
-        function emitEventToIndexer(isBuy, amount) {
-            // Add to trades table
-            indexerDB.trades.push({
-                id: indexerDB.trades.length + 1,
-                trader: 'demo-user.testnet',
-                is_buy: isBuy,
-                amount: amount,
-                generation: contractState.generation,
-                timestamp: Date.now(),
-                dna_hash: [...contractState.dna_hash]
-            });
-            
-            // Update streak tracking
-            if (isBuy) {
-                milestones.currentBullStreak++;
-                milestones.currentBearStreak = 0;
-                milestones.longestBullRun = Math.max(milestones.longestBullRun, milestones.currentBullStreak);
-            } else {
-                milestones.currentBearStreak++;
-                milestones.currentBullStreak = 0;
-                milestones.longestBearRun = Math.max(milestones.longestBearRun, milestones.currentBearStreak);
-            }
-            
-            milestones.totalVolume = (contractState.total_buys + contractState.total_sells) / 1e24;
-            
-            // Add to snapshots table
-            const traits = extractTraits();
-            indexerDB.snapshots.push({
-                id: indexerDB.snapshots.length + 1,
-                generation: contractState.generation,
-                total_buys: contractState.total_buys,
-                total_sells: contractState.total_sells,
-                traits: traits,
-                timestamp: Date.now()
-            });
-            
-            // Check achievements
-            checkAchievements();
-            
-            // Keep only last 100 trades in UI (indexer keeps all)
-            updateTradeLog();
-            updateChart();
-            updateEnvironment();
-        }
-        
-        function checkAchievements() {
-            achievementDefs.forEach(def => {
-                if (milestones.achievements.includes(def.id)) return;
-                
-                let achieved = false;
-                
-                switch(def.id) {
-                    case 'first_trade':
-                        achieved = contractState.generation >= 1;
-                        break;
-                    case 'generation_10':
-                        achieved = contractState.generation >= 10;
-                        break;
-                    case 'generation_50':
-                        achieved = contractState.generation >= 50;
-                        break;
-                    case 'generation_100':
-                        achieved = contractState.generation >= 100;
-                        break;
-                    case 'big_population':
-                        achieved = activeCreatures.length >= 60;
-                        break;
-                    case 'bull_run':
-                        achieved = milestones.longestBullRun >= 10;
-                        break;
-                    case 'bear_market':
-                        achieved = milestones.longestBearRun >= 10;
-                        break;
-                    case 'volume_king':
-                        achieved = milestones.totalVolume >= 100;
-                        break;
-                    case 'balanced':
-                        const ratio = contractState.total_sells === 0 ? 1 : 
-                                     contractState.total_buys / contractState.total_sells;
-                        achieved = ratio >= 0.9 && ratio <= 1.1 && contractState.generation >= 20;
-                        break;
-                }
-                
-                if (achieved) {
-                    milestones.achievements.push(def.id);
-                    showMilestonePopup(def);
-                    updateAchievementDisplay();
-                }
-            });
-            
-            // Track max population
-            if (activeCreatures.length > milestones.maxPopulation) {
-                milestones.maxPopulation = activeCreatures.length;
-            }
-        }
-        
-        function showMilestonePopup(achievement) {
-            const popup = document.createElement('div');
-            popup.className = 'milestone-popup';
-            popup.innerHTML = `
-                <h2 style="color: #00ff00; margin: 0 0 15px 0;">🎉 ACHIEVEMENT UNLOCKED!</h2>
-                <div style="font-size: 24px; margin: 10px 0;">${achievement.name}</div>
-                <div style="font-size: 14px; color: #888;">${achievement.desc}</div>
-                <button onclick="this.parentElement.remove()" style="margin-top: 20px;">Awesome!</button>
-            `;
-            document.body.appendChild(popup);
-            
-            setTimeout(() => {
-                if (popup.parentElement) popup.remove();
-            }, 5000);
-        }
-        
-        function updateAchievementDisplay() {
-            const list = document.getElementById('achievementList');
-            list.innerHTML = achievementDefs.map(def => {
-                const unlocked = milestones.achievements.includes(def.id);
-                return `<div class="achievement ${unlocked ? '' : 'locked'}">
-                    ${unlocked ? '✓' : '🔒'} ${def.name}
-                </div>`;
-            }).join('');
-        }
-        
-        function updateEnvironment() {
-            const gen = contractState.generation;
-            const population = activeCreatures.length;
-            const ratio = contractState.total_sells === 0 ? 1 : 
-                         contractState.total_buys / contractState.total_sells;
-            
-            // Update body class for background
-            document.body.className = '';
-            if (ratio > 1.5 && gen > 20) {
-                document.body.className = 'prosperous';
-            } else if (ratio < 0.7 && gen > 20) {
-                document.body.className = 'wasteland';
-            }
-            
-            // Add environmental elements based on milestones
-            environment.innerHTML = '';
-            
-            // Trees grow with prosperity
-            if (gen >= 30 && ratio > 1.2) {
-                const treeCount = Math.min(Math.floor(gen / 10), 10);
-                for (let i = 0; i < treeCount; i++) {
-                    const tree = document.createElement('div');
-                    tree.className = 'env-element';
-                    tree.textContent = '🌲';
-                    tree.style.left = (i * 10 + 5) + '%';
-                    tree.style.bottom = '10px';
-                    environment.appendChild(tree);
-                }
-            }
-            
-            // Rocks appear in wasteland
-            if (gen >= 30 && ratio < 0.8) {
-                const rockCount = Math.min(Math.floor(gen / 15), 8);
-                for (let i = 0; i < rockCount; i++) {
-                    const rock = document.createElement('div');
-                    rock.className = 'env-element';
-                    rock.textContent = '🪨';
-                    rock.style.left = (i * 12 + 8) + '%';
-                    rock.style.bottom = '15px';
-                    environment.appendChild(rock);
-                }
-            }
-            
-            // Stars appear at high generations
-            if (gen >= 50) {
-                const starCount = Math.min(Math.floor(gen / 10), 15);
-                for (let i = 0; i < starCount; i++) {
-                    const star = document.createElement('div');
-                    star.className = 'env-element';
-                    star.textContent = '⭐';
-                    star.style.left = (Math.random() * 90 + 5) + '%';
-                    star.style.top = (Math.random() * 30 + 5) + '%';
-                    star.style.animation = `sway ${2 + Math.random() * 3}s ease-in-out infinite`;
-                    environment.appendChild(star);
-                }
-            }
-            
-            // Add monuments for major events
-            milestones.monuments.forEach(monument => {
-                const mon = document.createElement('div');
-                mon.className = 'monument';
-                mon.textContent = monument.text;
-                mon.style.left = monument.x + 'px';
-                mon.style.top = monument.y + 'px';
-                mon.title = monument.desc;
-                environment.appendChild(mon);
-            });
-            
-            // Add ghost legends
-            milestones.legends.forEach(legend => {
-                const ghost = document.createElement('div');
-                ghost.className = 'env-element ghost';
-                ghost.textContent = creatureTemplates[legend.type].frames[0];
-                ghost.style.left = legend.x + 'px';
-                ghost.style.top = legend.y + 'px';
-                ghost.style.fontSize = '18px';
-                ghost.style.opacity = '0.2';
-                ghost.title = `Legend of the ${legend.type} - Gen ${legend.generation}`;
-                environment.appendChild(ghost);
-            });
-        }
-        
-        function extractTraits() {
-            const h = contractState.dna_hash;
-            const ratio = contractState.total_sells === 0 ? 1 : 
-                         contractState.total_buys / contractState.total_sells;
-            
-            let mood = 'genesis';
-            if (contractState.total_sells > 0) {
-                if (ratio > 2.0) mood = 'very_bullish';
-                else if (ratio > 1.2) mood = 'bullish';
-                else if (ratio > 0.8) mood = 'neutral';
-                else if (ratio > 0.5) mood = 'bearish';
-                else mood = 'very_bearish';
-            }
-            
-            return {
-                cats: (h[0] % 8) + 2,
-                bugs: (h[1] % 12) + 5,
-                fish: (h[2] % 6) + 3,
-                birds: (h[3] % 8) + 2,
-                bunnies: (h[4] % 6) + 2,
-                sheep: (h[5] % 5) + 2,
-                owls: (h[6] % 4) + 1,
-                frogs: (h[7] % 5) + 2,
-                aggression: h[8] % 10,
-                speed_multiplier: (h[9] % 5) + 1,
-                color_scheme: h[16] % 6,
-                density: h[17] % 10,
-                mood: mood
-            };
-        }
-        
-        function updateUI(traits) {
-            document.getElementById('generation').textContent = contractState.generation;
-            document.getElementById('buys').textContent = (contractState.total_buys / 1e24).toFixed(2) + ' Ⓝ';
-            document.getElementById('sells').textContent = (contractState.total_sells / 1e24).toFixed(2) + ' Ⓝ';
-            document.getElementById('cats').textContent = traits.cats;
-            document.getElementById('bugs').textContent = traits.bugs;
-            document.getElementById('fish').textContent = traits.fish;
-            document.getElementById('birds').textContent = traits.birds;
-            document.getElementById('aggression').textContent = traits.aggression + '/10';
-            document.getElementById('speed').textContent = traits.speed_multiplier + 'x';
-            
-            const moodEl = document.getElementById('mood');
-            moodEl.textContent = traits.mood.replace('_', ' ').toUpperCase();
-            moodEl.className = 'mood-indicator ' + traits.mood;
-            
-            // Population status
-            const ratio = contractState.total_sells === 0 ? 1 : 
-                         contractState.total_buys / contractState.total_sells;
-            
-            let popStatus = 'Population: ';
-            if (ratio > 1.5) popStatus += '📈 Growing (Bullish)';
-            else if (ratio > 1.1) popStatus += '↗ Expanding';
-            else if (ratio < 0.7) popStatus += '📉 Shrinking (Bearish)';
-            else if (ratio < 0.9) popStatus += '↘ Declining';
-            else popStatus += '⚖ Stable';
-            
-            document.getElementById('popStatus').textContent = popStatus;
-            
-            // Evolution status
-            const totalCreatures = activeCreatures.length;
-            const fullyEvolved = activeCreatures.filter(c => c.mutationLevel === 2).length;
-            const partiallyEvolved = activeCreatures.filter(c => c.mutationLevel === 1).length;
-            const original = activeCreatures.filter(c => c.mutationLevel === 0).length;
-            
-            let evolStatus = 'Evolution: ';
-            if (totalCreatures === 0) {
-                evolStatus += 'Genesis';
-            } else {
-                const evolvedPercent = Math.floor(((fullyEvolved + partiallyEvolved * 0.5) / totalCreatures) * 100);
-                evolStatus += `${evolvedPercent}% Evolved (${fullyEvolved}/${partiallyEvolved}/${original})`;
-            }
-            
-            document.getElementById('evolutionStatus').textContent = evolStatus;
-        }
-        
-        function updateTradeLog() {
-            const logEl = document.getElementById('tradeLog');
-            const recentTrades = indexerDB.trades.slice(-10).reverse();
-            
-            if (recentTrades.length === 0) {
-                logEl.innerHTML = '<div style="text-align: center; color: #666;">No trades yet</div>';
-                return;
-            }
-            
-            logEl.innerHTML = recentTrades.map(trade => {
-                const type = trade.is_buy ? 'BUY' : 'SELL';
-                const className = trade.is_buy ? 'buy' : 'sell';
-                const amount = (trade.amount / 1e24).toFixed(2);
-                return `<div class="trade-entry ${className}">${type}: ${amount} Ⓝ (Gen ${trade.generation})</div>`;
-            }).join('');
-        }
-        
-        function updateChart() {
-            const chartEl = document.getElementById('history-chart');
-            const snapshots = indexerDB.snapshots.slice(-20);
-            
-            if (snapshots.length === 0) {
-                chartEl.innerHTML = '<div style="text-align: center; color: #666; padding-top: 20px;">No data yet</div>';
-                return;
-            }
-            
-            const maxVolume = Math.max(...snapshots.map(s => s.total_buys + s.total_sells));
-            
-            chartEl.innerHTML = snapshots.map(snapshot => {
-                const totalVolume = snapshot.total_buys + snapshot.total_sells;
-                const height = maxVolume > 0 ? (totalVolume / maxVolume) * 50 : 1;
-                const buyRatio = totalVolume > 0 ? snapshot.total_buys / totalVolume : 0.5;
-                const color = buyRatio > 0.6 ? '#00ff00' : buyRatio > 0.4 ? '#ffff00' : '#ff6666';
-                return `<div class="chart-bar" style="height: ${height}px; background: ${color};" title="Gen ${snapshot.generation}"></div>`;
-            }).join('');
-        }
-        
-        function rebuildLandscape() {
-            const traits = extractTraits();
-            updateUI(traits);
-            
-            // Calculate population changes based on buy/sell pressure
-            const ratio = contractState.total_sells === 0 ? 2 : 
-                         contractState.total_buys / contractState.total_sells;
-            
-            // Population multiplier: more buys = more creatures, more sells = fewer
-            let populationMultiplier = 1.0;
-            if (ratio > 1.5) {
-                populationMultiplier = 1.3; // Bullish = growing population
-            } else if (ratio > 1.1) {
-                populationMultiplier = 1.1;
-            } else if (ratio < 0.7) {
-                populationMultiplier = 0.7; // Bearish = shrinking population
-            } else if (ratio < 0.9) {
-                populationMultiplier = 0.9;
-            }
-            
-            const desiredCounts = {
-                cat: Math.floor(traits.cats * populationMultiplier),
-                bug: Math.floor(traits.bugs * populationMultiplier),
-                fish: Math.floor(traits.fish * populationMultiplier),
-                bird: Math.floor(traits.birds * populationMultiplier),
-                bunny: Math.floor(traits.bunnies * populationMultiplier),
-                sheep: Math.floor(traits.sheep * populationMultiplier),
-                owl: Math.floor(traits.owls * populationMultiplier),
-                frog: Math.floor(traits.frogs * populationMultiplier)
-            };
-            
-            // Age all creatures and check for personality development
-            activeCreatures.forEach(creature => {
-                if (creature && typeof creature.assignPersonality === 'function') {
-                    creature.assignPersonality();
-                }
-            });
-            
-            // Check for major population events to create monuments
-            if (activeCreatures.length >= 70 && !milestones.monuments.find(m => m.type === 'peak')) {
-                milestones.monuments.push({
-                    type: 'peak',
-                    text: '📈\nPeak',
-                    desc: `Peak population: ${activeCreatures.length} creatures at Gen ${contractState.generation}`,
-                    x: window.innerWidth / 2 - 50,
-                    y: window.innerHeight / 2,
-                    generation: contractState.generation
+                const world = document.getElementById('world');
+                world.addEventListener('mousemove', (e) => {
+                    this.mouseX = e.clientX;
+                    this.mouseY = e.clientY;
                 });
-            }
-            
-            // First, evolve existing creatures gradually
-            for (const [type, desiredCount] of Object.entries(desiredCounts)) {
-                const currentCreatures = activeCreatures.filter(c => c.type === type);
-                const currentCount = currentCreatures.length;
+
+                // Initialize with random DNA
+                for (let i = 0; i < 80; i++) {
+                    this.dnaHash[i] = Math.floor(Math.random() * 256);
+                }
                 
-                // Evolve a portion of existing creatures (mutation)
-                // Oldest creatures (from earlier generations) evolve first
-                currentCreatures
-                    .sort((a, b) => a.birthGeneration - b.birthGeneration)
-                    .forEach((creature, idx) => {
-                        const totalOfType = currentCreatures.length;
-                        
-                        // First 30% become fully evolved
-                        if (idx < totalOfType * 0.3 && creature.mutationLevel < 2) {
-                            creature.mutationLevel = 2;
-                            creature.traits = traits;
-                            creature.element.style.color = creature.getColorFromTraits();
-                            creature.element.setAttribute('data-mutation', '2');
-                        }
-                        // Next 40% become partially evolved
-                        else if (idx < totalOfType * 0.7 && creature.mutationLevel < 1) {
-                            creature.mutationLevel = 1;
-                            creature.traits = traits;
-                            creature.element.style.color = creature.getColorFromTraits();
-                            creature.element.setAttribute('data-mutation', '1');
-                        }
-                        // Rest stay the same for now, but update traits
-                        else {
-                            creature.traits = traits;
-                        }
-                    });
+                this.updateTraits();
+                this.spawnInitialCreatures();
+                this.updateAchievements();
+                this.updateUI();
+                this.animate();
+            },
+
+            updateWorldBounds() {
+                const container = document.getElementById('canvas-container');
+                this.worldBounds = {
+                    width: container.offsetWidth,
+                    height: container.offsetHeight
+                };
+            },
+
+            spawnInitialCreatures() {
+                const types = Object.keys(CREATURE_TYPES);
+                for (let i = 0; i < 20; i++) {
+                    const type = types[Math.floor(Math.random() * types.length)];
+                    this.spawnCreature(type);
+                }
+            },
+
+            spawnCreature(type) {
+                const x = Math.random() * this.worldBounds.width;
+                const y = Math.random() * this.worldBounds.height;
+                const creature = new Creature(type, x, y, this.dnaHash, this.generation);
+                this.creatures.push(creature);
+            },
+
+            trade(type) {
+                this.generation++;
+                this.totalTrades++;
                 
-                // Add creatures if population is growing (buys)
-                if (currentCount < desiredCount) {
-                    const toAdd = Math.min(desiredCount - currentCount, 3); // Add max 3 at a time
-                    for (let i = 0; i < toAdd; i++) {
-                        // New creatures are born with current traits, unmutated
-                        activeCreatures.push(new AnimatedCreature(
-                            type,
-                            creatureTemplates[type],
-                            activeCreatures.length,
-                            traits,
-                            0 // Born unmutated
-                        ));
+                if (type === 'buy') {
+                    this.buyCount++;
+                    this.consecutiveBuys++;
+                    this.consecutiveSells = 0;
+                    
+                    const spawnCount = Math.floor(3 + this.dnaHash[0] % 5);
+                    const types = Object.keys(CREATURE_TYPES);
+                    for (let i = 0; i < spawnCount; i++) {
+                        const typeIndex = this.dnaHash[(i + 10) % 80] % types.length;
+                        this.spawnCreature(types[typeIndex]);
+                    }
+                } else {
+                    this.sellCount++;
+                    this.consecutiveSells++;
+                    this.consecutiveBuys = 0;
+                    
+                    const removeCount = Math.min(Math.floor(2 + this.dnaHash[1] % 4), this.creatures.length);
+                    for (let i = 0; i < removeCount; i++) {
+                        if (this.creatures.length > 0) {
+                            const removed = this.creatures.pop();
+                            removed.destroy();
+                        }
                     }
                 }
+
+                // Update DNA hash
+                this.evolveDNA(type);
+                this.updateTraits();
+                this.updateEnvironment();
+                this.addTradeLog(type);
+                this.updateAchievements();
+                this.updateUI();
+
+                if (this.creatures.length > this.peakPopulation) {
+                    this.peakPopulation = this.creatures.length;
+                    this.addMonument();
+                }
+            },
+
+            evolveDNA(tradeType) {
+                const shift = tradeType === 'buy' ? 1 : -1;
+                for (let i = 0; i < 80; i++) {
+                    this.dnaHash[i] = (this.dnaHash[i] + shift + 256) % 256;
+                }
+            },
+
+            updateTraits() {
+                this.traits.aggression = this.dnaHash[0] / 2.55;
+                this.traits.speed = this.dnaHash[1] / 2.55;
+                this.traits.diversity = this.dnaHash[2] / 2.55;
+            },
+
+            updateEnvironment() {
+                const mood = this.getMood();
+                const world = document.getElementById('world');
                 
-                // Remove creatures if population is shrinking (sells)
-                if (currentCount > desiredCount) {
-                    const toRemove = Math.min(currentCount - desiredCount, 2); // Remove max 2 at a time
+                if (mood === 'very_bullish') {
+                    world.style.background = 'linear-gradient(to bottom, #001a00, #003300)';
+                } else if (mood === 'bullish') {
+                    world.style.background = 'linear-gradient(to bottom, #001100, #002200)';
+                } else if (mood === 'bearish') {
+                    world.style.background = 'linear-gradient(to bottom, #1a0000, #330000)';
+                } else if (mood === 'very_bearish') {
+                    world.style.background = 'linear-gradient(to bottom, #220000, #440000)';
+                } else {
+                    world.style.background = '#000';
+                }
+
+                // Add scenery based on generation
+                if (this.generation >= 30) {
+                    const ratio = this.buyCount / Math.max(this.totalTrades, 1);
+                    if (ratio > 0.6 && Math.random() < 0.1) {
+                        this.addScenery('🌲', 'tree');
+                    } else if (ratio < 0.4 && Math.random() < 0.1) {
+                        this.addScenery('🗿', 'rock');
+                    }
+                }
+
+                if (this.generation >= 50 && Math.random() < 0.05) {
+                    this.addScenery('⭐', 'star');
+                }
+            },
+
+            addScenery(char, type) {
+                const x = Math.random() * this.worldBounds.width;
+                const y = Math.random() * this.worldBounds.height;
+                const el = document.createElement('div');
+                el.className = 'scenery';
+                el.textContent = char;
+                el.style.left = x + 'px';
+                el.style.top = y + 'px';
+                document.getElementById('world').appendChild(el);
+                this.scenery.push({ element: el, type });
+
+                if (this.scenery.length > 50) {
+                    const old = this.scenery.shift();
+                    old.element.remove();
+                }
+            },
+
+            addMonument() {
+                this.addScenery('🏛️', 'monument');
+            },
+
+            getMood() {
+                const ratio = this.buyCount / Math.max(this.totalTrades, 1);
+                if (ratio > 0.7) return 'very_bullish';
+                if (ratio > 0.55) return 'bullish';
+                if (ratio < 0.3) return 'very_bearish';
+                if (ratio < 0.45) return 'bearish';
+                return 'neutral';
+            },
+
+            addTradeLog(type) {
+                this.tradeHistory.unshift({ type, gen: this.generation, pop: this.creatures.length });
+                if (this.tradeHistory.length > 10) this.tradeHistory.pop();
+            },
+
+            updateAchievements() {
+                ACHIEVEMENTS.forEach(ach => {
+                    if (!this.unlockedAchievements.has(ach.id) && ach.condition()) {
+                        this.unlockedAchievements.add(ach.id);
+                        this.showNotification(`🏆 ${ach.name} unlocked!`);
+                    }
+                });
+            },
+
+            showNotification(text) {
+                const notif = document.createElement('div');
+                notif.className = 'notification';
+                notif.textContent = text;
+                document.body.appendChild(notif);
+                setTimeout(() => notif.remove(), 3000);
+            },
+
+            updateUI() {
+                document.getElementById('gen').textContent = this.generation;
+                document.getElementById('pop').textContent = this.creatures.length;
+                document.getElementById('buys').textContent = this.buyCount;
+                document.getElementById('sells').textContent = this.sellCount;
+                document.getElementById('mood').textContent = this.getMood().toUpperCase().replace('_', ' ');
+                
+                const evolved = this.creatures.filter(c => c.age / this.generation >= 0.3).length;
+                const elders = this.creatures.filter(c => c.legendary === 'elder').length;
+                const leaders = this.creatures.filter(c => c.legendary === 'leader').length;
+                const explorers = this.creatures.filter(c => c.legendary === 'explorer').length;
+                
+                document.getElementById('evolved').textContent = evolved;
+                document.getElementById('elders').textContent = elders;
+                document.getElementById('leaders').textContent = leaders;
+                document.getElementById('explorers').textContent = explorers;
+                
+                document.getElementById('aggression').textContent = Math.round(this.traits.aggression) + '%';
+                document.getElementById('speed').textContent = Math.round(this.traits.speed) + '%';
+                document.getElementById('diversity').textContent = Math.round(this.traits.diversity) + '%';
+
+                // Achievements
+                const achPanel = document.getElementById('achievements-panel');
+                achPanel.innerHTML = ACHIEVEMENTS.map(ach => 
+                    `<div class="achievement ${this.unlockedAchievements.has(ach.id) ? '' : 'locked'}">
+                        ${this.unlockedAchievements.has(ach.id) ? '✅' : '🔒'} ${ach.name}: ${ach.desc}
+                    </div>`
+                ).join('');
+
+                // Trade log
+                const logPanel = document.getElementById('trade-log');
+                logPanel.innerHTML = this.tradeHistory.map(t => 
+                    `<div class="trade-log-item ${t.type}">
+                        Gen ${t.gen}: ${t.type.toUpperCase()} (Pop: ${t.pop})
+                    </div>`
+                ).join('');
+
+                // Volume chart
+                const volumePanel = document.getElementById('volume-chart');
+                const maxVol = Math.max(...this.tradeHistory.map(t => t.pop), 1);
+                volumePanel.innerHTML = this.tradeHistory.map(t => 
+                    `<div class="volume-bar" style="width: ${(t.pop / maxVol) * 100}%"></div>`
+                ).join('');
+            },
+
+            animate() {
+                this.creatures.forEach(c => c.update(this.mouseX, this.mouseY, this.creatures));
+                requestAnimationFrame(() => this.animate());
+            },
+
+            showHistory() {
+                alert(`Trade History:\nTotal Trades: ${this.totalTrades}\nBuys: ${this.buyCount}\nSells: ${this.sellCount}\nGenerations: ${this.generation}\nPeak Population: ${this.peakPopulation}`);
+            },
+
+            reset() {
+                if (confirm('Reset the entire ecosystem?')) {
+                    this.creatures.forEach(c => c.destroy());
+                    this.scenery.forEach(s => s.element.remove());
                     
-                    // Remove the weakest (unmutated) first, but spare elders and leaders
-                    const victimsToRemove = currentCreatures
-                        .filter(c => c.personality !== 'elder' && c.personality !== 'leader')
-                        .sort((a, b) => a.mutationLevel - b.mutationLevel)
-                        .slice(0, toRemove);
+                    this.generation = 0;
+                    this.creatures = [];
+                    this.scenery = [];
+                    this.buyCount = 0;
+                    this.sellCount = 0;
+                    this.totalTrades = 0;
+                    this.consecutiveBuys = 0;
+                    this.consecutiveSells = 0;
+                    this.tradeHistory = [];
+                    this.unlockedAchievements.clear();
+                    this.peakPopulation = 0;
                     
-                    victimsToRemove.forEach(creature => {
-                        // If it was special, leave a ghost
-                        if (creature.mutationLevel === 2 || creature.personality) {
-                            milestones.legends.push({
-                                type: creature.type,
-                                generation: contractState.generation,
-                                x: creature.x,
-                                y: creature.y
-                            });
-                        }
-                        
-                        creature.destroy();
-                        const idx = activeCreatures.indexOf(creature);
-                        if (idx > -1) activeCreatures.splice(idx, 1);
-                    });
+                    for (let i = 0; i < 80; i++) {
+                        this.dnaHash[i] = Math.floor(Math.random() * 256);
+                    }
+                    
+                    this.updateTraits();
+                    this.spawnInitialCreatures();
+                    this.updateUI();
+                    
+                    document.getElementById('world').style.background = '#000';
                 }
             }
-        }
-        
-        function simulateBuy() {
-            const amount = (Math.random() * 2 + 0.5) * 1e24;
-            updateContractState(true, amount);
-            rebuildLandscape();
-        }
-        
-        function simulateSell() {
-            const amount = (Math.random() * 2 + 0.5) * 1e24;
-            updateContractState(false, amount);
-            rebuildLandscape();
-        }
-        
-        function viewHistory() {
-            if (indexerDB.trades.length === 0) {
-                alert('No trade history yet! Make some trades first.');
-                return;
-            }
-            
-            const totalTrades = indexerDB.trades.length;
-            const totalBuys = indexerDB.trades.filter(t => t.is_buy).length;
-            const totalSells = indexerDB.trades.filter(t => !t.is_buy).length;
-            const totalVolume = (contractState.total_buys + contractState.total_sells) / 1e24;
-            
-            alert(`📊 TRADE HISTORY (from Indexer)\n\n` +
-                  `Total Trades: ${totalTrades}\n` +
-                  `Buys: ${totalBuys}\n` +
-                  `Sells: ${totalSells}\n` +
-                  `Total Volume: ${totalVolume.toFixed(2)} Ⓝ\n\n` +
-                  `Current Generation: ${contractState.generation}\n\n` +
-                  `This data is stored in the indexer DB,\n` +
-                  `NOT on-chain! Contract only stores\n` +
-                  `current state (80 bytes).`);
-        }
-        
-        function resetLandscape() {
-            if (!confirm('Reset will erase all progress, achievements, and legends. Are you sure?')) {
-                return;
-            }
-            
-            contractState = {
-                dna_hash: new Array(32).fill(0),
-                generation: 0,
-                total_buys: 0,
-                total_sells: 0,
-                last_updated: Date.now()
-            };
-            
-            indexerDB = {
-                trades: [],
-                snapshots: []
-            };
-            
-            milestones = {
-                achievements: [],
-                monuments: [],
-                legends: [],
-                maxPopulation: 0,
-                longestBullRun: 0,
-                longestBearRun: 0,
-                currentBullStreak: 0,
-                currentBearStreak: 0,
-                totalVolume: 0
-            };
-            
-            activeCreatures.forEach(c => c.destroy());
-            activeCreatures = [];
-            
-            rebuildLandscape();
-            updateTradeLog();
-            updateChart();
-            updateEnvironment();
-            updateAchievementDisplay();
-        }
-        
-        function animate() {
-            activeCreatures.forEach(c => c.update(activeCreatures));
-            requestAnimationFrame(animate);
-        }
-        
-        // Initialize
-        updateAchievementDisplay();
-        rebuildLandscape();
-        animate();
+        };
+
+        // Start the game when page loads
+        window.addEventListener('load', () => {
+            game.init();
+        });
     </script>
 </body>
 </html>
