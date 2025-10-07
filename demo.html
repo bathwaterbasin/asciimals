@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEAR ASCII Landscape</title>
+    <title>NEAR ASCII Landscape - With History</title>
     <style>
         * {
             margin: 0;
@@ -43,12 +43,14 @@
             position: fixed;
             top: 20px;
             right: 20px;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.9);
             border: 2px solid #00ff00;
             padding: 20px;
-            max-width: 300px;
+            max-width: 320px;
             font-size: 12px;
             z-index: 1000;
+            max-height: 80vh;
+            overflow-y: auto;
         }
         
         #info-panel h2 {
@@ -57,13 +59,22 @@
             font-size: 16px;
         }
         
-        #info-panel .stat {
+        #info-panel h3 {
+            margin-top: 15px;
+            margin-bottom: 5px;
+            color: #00ff00;
+            font-size: 13px;
+            border-top: 1px solid #00ff00;
+            padding-top: 10px;
+        }
+        
+        .stat {
             margin: 5px 0;
             display: flex;
             justify-content: space-between;
         }
         
-        #info-panel .label {
+        .label {
             color: #00aa00;
         }
         
@@ -72,12 +83,15 @@
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.9);
             border: 2px solid #00ff00;
             padding: 20px;
             display: flex;
             gap: 10px;
             z-index: 1000;
+            flex-wrap: wrap;
+            max-width: 600px;
+            justify-content: center;
         }
         
         button {
@@ -120,18 +134,62 @@
             top: 20px;
             left: 20px;
             padding: 10px;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.9);
             border: 2px solid #00ff00;
-            font-size: 12px;
+            font-size: 11px;
+            max-width: 250px;
         }
         
         .connected { color: #00ff00; }
-        .disconnected { color: #ff0000; }
+        .disconnected { color: #ff8800; }
+        
+        .trade-log {
+            max-height: 150px;
+            overflow-y: auto;
+            font-size: 10px;
+            margin-top: 5px;
+            padding: 5px;
+            background: rgba(0, 50, 0, 0.3);
+            border: 1px solid #00ff00;
+        }
+        
+        .trade-entry {
+            margin: 2px 0;
+            padding: 2px;
+        }
+        
+        .buy { color: #00ff00; }
+        .sell { color: #ff6666; }
+        
+        #history-chart {
+            margin-top: 10px;
+            padding: 5px;
+            background: rgba(0, 50, 0, 0.3);
+            border: 1px solid #00ff00;
+            height: 60px;
+            position: relative;
+        }
+        
+        .chart-bar {
+            display: inline-block;
+            width: 3px;
+            background: #00ff00;
+            margin: 0 1px;
+            vertical-align: bottom;
+        }
     </style>
 </head>
 <body>
     <div id="connection-status">
-        <span class="disconnected">⚠ Demo Mode (Not connected to NEAR)</span>
+        <div class="disconnected">⚠ DEMO MODE</div>
+        <div style="font-size: 9px; margin-top: 5px;">
+            This demo simulates the contract + indexer pattern.
+            <br><br>
+            <strong>Architecture:</strong><br>
+            • Contract: Current state only<br>
+            • Indexer: Full history<br>
+            • Frontend: Queries both
+        </div>
     </div>
     
     <div id="canvas"></div>
@@ -139,6 +197,8 @@
     <div id="info-panel">
         <h2>🌍 ASCII Landscape</h2>
         <div class="mood-indicator" id="mood">GENESIS</div>
+        
+        <h3>Current State (from contract)</h3>
         <div class="stat">
             <span class="label">Generation:</span>
             <span id="generation">0</span>
@@ -151,7 +211,8 @@
             <span class="label">Total Sells:</span>
             <span id="sells">0 Ⓝ</span>
         </div>
-        <hr style="margin: 10px 0; border-color: #00ff00;">
+        
+        <h3>Creatures (DNA-derived)</h3>
         <div class="stat">
             <span class="label">🐱 Cats:</span>
             <span id="cats">2</span>
@@ -168,15 +229,8 @@
             <span class="label">🐦 Birds:</span>
             <span id="birds">2</span>
         </div>
-        <div class="stat">
-            <span class="label">🐰 Bunnies:</span>
-            <span id="bunnies">2</span>
-        </div>
-        <div class="stat">
-            <span class="label">🐑 Sheep:</span>
-            <span id="sheep">2</span>
-        </div>
-        <hr style="margin: 10px 0; border-color: #00ff00;">
+        
+        <h3>Traits</h3>
         <div class="stat">
             <span class="label">Aggression:</span>
             <span id="aggression">5/10</span>
@@ -185,21 +239,37 @@
             <span class="label">Speed:</span>
             <span id="speed">1x</span>
         </div>
+        
+        <h3>Recent Trades (from indexer)</h3>
+        <div class="trade-log" id="tradeLog">
+            <div style="text-align: center; color: #666;">No trades yet</div>
+        </div>
+        
+        <h3>Volume Chart</h3>
+        <div id="history-chart"></div>
     </div>
     
     <div id="controls">
-        <button id="buyBtn" onclick="simulateBuy()">📈 BUY (Demo)</button>
-        <button id="sellBtn" onclick="simulateSell()">📉 SELL (Demo)</button>
+        <button onclick="simulateBuy()">📈 BUY</button>
+        <button onclick="simulateSell()">📉 SELL</button>
+        <button onclick="viewHistory()">📊 HISTORY</button>
         <button onclick="resetLandscape()">🔄 RESET</button>
     </div>
     
     <script>
-        // Demo state (simulates contract state)
-        let demoState = {
+        // Simulated contract state (bounded)
+        let contractState = {
             dna_hash: new Array(32).fill(0),
             generation: 0,
             total_buys: 0,
             total_sells: 0,
+            last_updated: Date.now()
+        };
+        
+        // Simulated indexer database (unlimited)
+        let indexerDB = {
+            trades: [],
+            snapshots: []
         };
         
         const canvas = document.getElementById('canvas');
@@ -275,8 +345,6 @@
                 this.element.style.color = this.getColorFromTraits();
                 this.element.textContent = template.frames[0];
                 
-                this.element.addEventListener('click', () => this.onClick());
-                
                 canvas.appendChild(this.element);
             }
             
@@ -287,33 +355,49 @@
                     '#00ffff',
                     '#ff00ff',
                     '#ffff00',
-                    '#ff0000'
+                    '#ff6666'
                 ];
                 return colorSchemes[this.traits.color_scheme % colorSchemes.length];
             }
             
-            onClick() {
-                this.vx = (Math.random() - 0.5) * 10;
-                this.vy = (Math.random() - 0.5) * 10;
-                this.element.style.transform = 'scale(1.5) rotate(360deg)';
-                setTimeout(() => {
-                    this.element.style.transform = '';
-                }, 300);
-            }
-            
             update(allCreatures) {
                 this.behaviorTimer++;
-                const speedMult = this.traits.speed_multiplier / 2;
-                const aggression = this.traits.aggression / 10;
+                
+                // Adjust behavior based on mood
+                let speedMult = this.traits.speed_multiplier / 2;
+                let aggression = this.traits.aggression / 10;
+                
+                // Mood affects behavior dramatically
+                if (this.traits.mood === 'very_bullish') {
+                    speedMult *= 1.5;  // Fast and energetic
+                    aggression *= 0.5; // Friendly
+                } else if (this.traits.mood === 'bullish') {
+                    speedMult *= 1.2;
+                    aggression *= 0.7;
+                } else if (this.traits.mood === 'bearish') {
+                    speedMult *= 0.7;
+                    aggression *= 1.3; // More aggressive
+                } else if (this.traits.mood === 'very_bearish') {
+                    speedMult *= 0.5;  // Slow and cautious
+                    aggression *= 1.8; // Very aggressive
+                }
                 
                 switch(this.template.behavior) {
                     case 'chase':
                         const dx = mouseX - this.x;
                         const dy = mouseY - this.y;
                         const dist = Math.sqrt(dx * dx + dy * dy);
-                        if (dist > 50) {
+                        
+                        // In bearish mood, cats are more skittish
+                        const chaseDistance = this.traits.mood.includes('bearish') ? 150 : 50;
+                        
+                        if (dist > chaseDistance) {
                             this.vx += dx / dist * 0.3 * speedMult;
                             this.vy += dy / dist * 0.3 * speedMult;
+                        } else if (this.traits.mood.includes('bearish') && dist < 100) {
+                            // Run away when bearish
+                            this.vx -= dx / dist * 0.2 * speedMult;
+                            this.vy -= dy / dist * 0.2 * speedMult;
                         }
                         break;
                         
@@ -321,14 +405,19 @@
                         const sdx = mouseX - this.x;
                         const sdy = mouseY - this.y;
                         const sdist = Math.sqrt(sdx * sdx + sdy * sdy);
-                        if (sdist < 200) {
+                        
+                        // More reactive in bearish mood
+                        const scatterDistance = this.traits.mood.includes('bearish') ? 300 : 200;
+                        
+                        if (sdist < scatterDistance) {
                             this.vx -= sdx / sdist * 0.5 * (1 + aggression);
                             this.vy -= sdy / sdist * 0.5 * (1 + aggression);
                         }
                         break;
                         
                     case 'hop':
-                        if (this.behaviorTimer > 60 / speedMult) {
+                        const hopInterval = this.traits.mood.includes('bullish') ? 40 : 80;
+                        if (this.behaviorTimer > hopInterval / speedMult) {
                             this.vx = (Math.random() - 0.5) * 8 * speedMult;
                             this.vy = -Math.random() * 5 * speedMult;
                             this.behaviorTimer = 0;
@@ -345,14 +434,19 @@
                         });
                         avgX /= fish.length;
                         avgY /= fish.length;
-                        this.vx += (avgX - this.x) * 0.001 * speedMult;
-                        this.vy += (avgY - this.y) * 0.001 * speedMult;
+                        
+                        // Tighter schooling when bearish (safety in numbers)
+                        const cohesion = this.traits.mood.includes('bearish') ? 0.003 : 0.001;
+                        this.vx += (avgX - this.x) * cohesion * speedMult;
+                        this.vy += (avgY - this.y) * cohesion * speedMult;
                         break;
                         
                     case 'circle':
                         const centerX = window.innerWidth / 2;
                         const centerY = window.innerHeight / 2;
-                        const radius = 200;
+                        
+                        // Wider circles when bullish, tighter when bearish
+                        const radius = this.traits.mood.includes('bullish') ? 300 : 150;
                         const angle = this.behaviorTimer * 0.02 * speedMult;
                         const targetX = centerX + Math.cos(angle + this.index) * radius;
                         const targetY = centerY + Math.sin(angle + this.index) * radius;
@@ -364,11 +458,29 @@
                         const sheep = allCreatures.filter(c => c.template.behavior === 'follow');
                         if (sheep.length > 0 && this !== sheep[0]) {
                             const leader = sheep[0];
-                            this.vx += (leader.x - this.x) * 0.002 * speedMult;
-                            this.vy += (leader.y - this.y) * 0.002 * speedMult;
+                            // Stick closer together when bearish
+                            const followStrength = this.traits.mood.includes('bearish') ? 0.004 : 0.002;
+                            this.vx += (leader.x - this.x) * followStrength * speedMult;
+                            this.vy += (leader.y - this.y) * followStrength * speedMult;
                         } else {
                             this.vx += (Math.random() - 0.5) * 0.2;
                             this.vy += (Math.random() - 0.5) * 0.2;
+                        }
+                        break;
+                        
+                    case 'watch':
+                        // Owls turn to watch mouse
+                        const angle2 = Math.atan2(mouseY - this.y, mouseX - this.x);
+                        this.vx = Math.cos(angle2) * 0.1 * speedMult;
+                        this.vy = Math.sin(angle2) * 0.1 * speedMult;
+                        break;
+                        
+                    case 'jump':
+                        const jumpInterval = this.traits.mood.includes('bullish') ? 60 : 100;
+                        if (this.behaviorTimer > jumpInterval / speedMult) {
+                            this.vx = (Math.random() - 0.5) * 6 * speedMult;
+                            this.vy = (Math.random() - 0.5) * 6 * speedMult;
+                            this.behaviorTimer = 0;
                         }
                         break;
                 }
@@ -406,40 +518,79 @@
         
         let activeCreatures = [];
         
-        function hashBytes(data) {
-            let hash = 0;
-            for (let i = 0; i < data.length; i++) {
-                hash = ((hash << 5) - hash) + data[i];
-                hash = hash & hash;
+        // Simulate contract: update DNA hash more gradually
+        function updateContractState(isBuy, amount) {
+            const newHash = new Uint8Array(32);
+            
+            // Gradually evolve the hash based on trade direction and volume
+            const influence = Math.floor(amount / 1e24); // NEAR amount influence
+            
+            for (let i = 0; i < 32; i++) {
+                // Small incremental changes rather than random jumps
+                let change = 0;
+                
+                if (isBuy) {
+                    // Buys nudge hash values upward
+                    change = Math.floor(influence / 2) + 1;
+                } else {
+                    // Sells nudge hash values downward
+                    change = -(Math.floor(influence / 2) + 1);
+                }
+                
+                // Apply change with wrapping
+                newHash[i] = (contractState.dna_hash[i] + change + 256) % 256;
             }
-            return Math.abs(hash);
+            
+            contractState.dna_hash = Array.from(newHash);
+            contractState.generation++;
+            contractState.last_updated = Date.now();
+            
+            if (isBuy) {
+                contractState.total_buys += amount;
+            } else {
+                contractState.total_sells += amount;
+            }
+            
+            // Emit event to indexer
+            emitEventToIndexer(isBuy, amount);
         }
         
-        function updateDnaHash(isBuy, amount) {
-            const newHash = new Uint8Array(32);
-            for (let i = 0; i < 32; i++) {
-                newHash[i] = (demoState.dna_hash[i] + 
-                             (isBuy ? 1 : 0) + 
-                             (amount % 256) + 
-                             (Date.now() % 256) + 
-                             i) % 256;
-            }
-            demoState.dna_hash = Array.from(newHash);
-            demoState.generation++;
-            if (isBuy) {
-                demoState.total_buys += amount;
-            } else {
-                demoState.total_sells += amount;
-            }
+        // Simulate indexer: capture events
+        function emitEventToIndexer(isBuy, amount) {
+            // Add to trades table
+            indexerDB.trades.push({
+                id: indexerDB.trades.length + 1,
+                trader: 'demo-user.testnet',
+                is_buy: isBuy,
+                amount: amount,
+                generation: contractState.generation,
+                timestamp: Date.now(),
+                dna_hash: [...contractState.dna_hash]
+            });
+            
+            // Add to snapshots table
+            const traits = extractTraits();
+            indexerDB.snapshots.push({
+                id: indexerDB.snapshots.length + 1,
+                generation: contractState.generation,
+                total_buys: contractState.total_buys,
+                total_sells: contractState.total_sells,
+                traits: traits,
+                timestamp: Date.now()
+            });
+            
+            // Keep only last 100 trades in UI (indexer keeps all)
+            updateTradeLog();
+            updateChart();
         }
         
         function extractTraits() {
-            const h = demoState.dna_hash;
-            const ratio = demoState.total_sells === 0 ? 1 : 
-                         demoState.total_buys / demoState.total_sells;
+            const h = contractState.dna_hash;
+            const ratio = contractState.total_sells === 0 ? 1 : 
+                         contractState.total_buys / contractState.total_sells;
             
             let mood = 'genesis';
-            if (demoState.total_sells > 0) {
+            if (contractState.total_sells > 0) {
                 if (ratio > 2.0) mood = 'very_bullish';
                 else if (ratio > 1.2) mood = 'bullish';
                 else if (ratio > 0.8) mood = 'neutral';
@@ -465,15 +616,13 @@
         }
         
         function updateUI(traits) {
-            document.getElementById('generation').textContent = demoState.generation;
-            document.getElementById('buys').textContent = (demoState.total_buys / 1e24).toFixed(2) + ' Ⓝ';
-            document.getElementById('sells').textContent = (demoState.total_sells / 1e24).toFixed(2) + ' Ⓝ';
+            document.getElementById('generation').textContent = contractState.generation;
+            document.getElementById('buys').textContent = (contractState.total_buys / 1e24).toFixed(2) + ' Ⓝ';
+            document.getElementById('sells').textContent = (contractState.total_sells / 1e24).toFixed(2) + ' Ⓝ';
             document.getElementById('cats').textContent = traits.cats;
             document.getElementById('bugs').textContent = traits.bugs;
             document.getElementById('fish').textContent = traits.fish;
             document.getElementById('birds').textContent = traits.birds;
-            document.getElementById('bunnies').textContent = traits.bunnies;
-            document.getElementById('sheep').textContent = traits.sheep;
             document.getElementById('aggression').textContent = traits.aggression + '/10';
             document.getElementById('speed').textContent = traits.speed_multiplier + 'x';
             
@@ -482,14 +631,48 @@
             moodEl.className = 'mood-indicator ' + traits.mood;
         }
         
-        function rebuildLandscape() {
-            activeCreatures.forEach(c => c.destroy());
-            activeCreatures = [];
+        function updateTradeLog() {
+            const logEl = document.getElementById('tradeLog');
+            const recentTrades = indexerDB.trades.slice(-10).reverse();
             
+            if (recentTrades.length === 0) {
+                logEl.innerHTML = '<div style="text-align: center; color: #666;">No trades yet</div>';
+                return;
+            }
+            
+            logEl.innerHTML = recentTrades.map(trade => {
+                const type = trade.is_buy ? 'BUY' : 'SELL';
+                const className = trade.is_buy ? 'buy' : 'sell';
+                const amount = (trade.amount / 1e24).toFixed(2);
+                return `<div class="trade-entry ${className}">${type}: ${amount} Ⓝ (Gen ${trade.generation})</div>`;
+            }).join('');
+        }
+        
+        function updateChart() {
+            const chartEl = document.getElementById('history-chart');
+            const snapshots = indexerDB.snapshots.slice(-20);
+            
+            if (snapshots.length === 0) {
+                chartEl.innerHTML = '<div style="text-align: center; color: #666; padding-top: 20px;">No data yet</div>';
+                return;
+            }
+            
+            const maxVolume = Math.max(...snapshots.map(s => s.total_buys + s.total_sells));
+            
+            chartEl.innerHTML = snapshots.map(snapshot => {
+                const totalVolume = snapshot.total_buys + snapshot.total_sells;
+                const height = maxVolume > 0 ? (totalVolume / maxVolume) * 50 : 1;
+                const buyRatio = totalVolume > 0 ? snapshot.total_buys / totalVolume : 0.5;
+                const color = buyRatio > 0.6 ? '#00ff00' : buyRatio > 0.4 ? '#ffff00' : '#ff6666';
+                return `<div class="chart-bar" style="height: ${height}px; background: ${color};" title="Gen ${snapshot.generation}"></div>`;
+            }).join('');
+        }
+        
+        function rebuildLandscape() {
             const traits = extractTraits();
             updateUI(traits);
             
-            const creatureCounts = {
+            const desiredCounts = {
                 cat: traits.cats,
                 bug: traits.bugs,
                 fish: traits.fish,
@@ -500,39 +683,94 @@
                 frog: traits.frogs
             };
             
-            let index = 0;
-            for (const [type, count] of Object.entries(creatureCounts)) {
-                for (let i = 0; i < count; i++) {
-                    activeCreatures.push(new AnimatedCreature(
-                        type,
-                        creatureTemplates[type],
-                        index++,
-                        traits
-                    ));
+            // Update existing creatures' colors and traits
+            activeCreatures.forEach(c => {
+                c.traits = traits;
+                c.element.style.color = c.getColorFromTraits();
+            });
+            
+            // Adjust creature counts gradually
+            for (const [type, desiredCount] of Object.entries(desiredCounts)) {
+                const currentCreatures = activeCreatures.filter(c => c.type === type);
+                const currentCount = currentCreatures.length;
+                
+                // Add creatures if we need more
+                if (currentCount < desiredCount) {
+                    const toAdd = desiredCount - currentCount;
+                    for (let i = 0; i < toAdd; i++) {
+                        activeCreatures.push(new AnimatedCreature(
+                            type,
+                            creatureTemplates[type],
+                            activeCreatures.length,
+                            traits
+                        ));
+                    }
+                }
+                
+                // Remove creatures if we have too many
+                if (currentCount > desiredCount) {
+                    const toRemove = currentCount - desiredCount;
+                    for (let i = 0; i < toRemove; i++) {
+                        const creatureToRemove = currentCreatures[i];
+                        creatureToRemove.destroy();
+                        const idx = activeCreatures.indexOf(creatureToRemove);
+                        if (idx > -1) activeCreatures.splice(idx, 1);
+                    }
                 }
             }
         }
         
         function simulateBuy() {
             const amount = (Math.random() * 2 + 0.5) * 1e24;
-            updateDnaHash(true, amount);
+            updateContractState(true, amount);
             rebuildLandscape();
         }
         
         function simulateSell() {
             const amount = (Math.random() * 2 + 0.5) * 1e24;
-            updateDnaHash(false, amount);
+            updateContractState(false, amount);
             rebuildLandscape();
         }
         
+        function viewHistory() {
+            if (indexerDB.trades.length === 0) {
+                alert('No trade history yet! Make some trades first.');
+                return;
+            }
+            
+            const totalTrades = indexerDB.trades.length;
+            const totalBuys = indexerDB.trades.filter(t => t.is_buy).length;
+            const totalSells = indexerDB.trades.filter(t => !t.is_buy).length;
+            const totalVolume = (contractState.total_buys + contractState.total_sells) / 1e24;
+            
+            alert(`📊 TRADE HISTORY (from Indexer)\n\n` +
+                  `Total Trades: ${totalTrades}\n` +
+                  `Buys: ${totalBuys}\n` +
+                  `Sells: ${totalSells}\n` +
+                  `Total Volume: ${totalVolume.toFixed(2)} Ⓝ\n\n` +
+                  `Current Generation: ${contractState.generation}\n\n` +
+                  `This data is stored in the indexer DB,\n` +
+                  `NOT on-chain! Contract only stores\n` +
+                  `current state (80 bytes).`);
+        }
+        
         function resetLandscape() {
-            demoState = {
+            contractState = {
                 dna_hash: new Array(32).fill(0),
                 generation: 0,
                 total_buys: 0,
                 total_sells: 0,
+                last_updated: Date.now()
             };
+            
+            indexerDB = {
+                trades: [],
+                snapshots: []
+            };
+            
             rebuildLandscape();
+            updateTradeLog();
+            updateChart();
         }
         
         function animate() {
